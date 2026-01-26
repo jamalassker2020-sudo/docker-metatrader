@@ -1,49 +1,27 @@
-# Run MetaTrader in a container.
-#
-# Copyright (c) 2022 tick <tickelton@gmail.com>
-#
-# SPDX-License-Identifier:     ISC
-#
-# docker run \
-#	--net host \
-#	-v /tmp/.X11-unix:/tmp/.X11-unix \
-#	-e DISPLAY \
-#	-v $METATRADER_HOST_PATH:/MetaTrader \
-#	--name mt \
-#	tickelton/mt
+# Use a base that already includes Wine, Xvfb, and noVNC (web-based desktop)
+FROM accetto/ubuntu-vnc-xfce-g3
 
-# Base docker image.
-FROM ubuntu:focal
+USER root
 
-ADD https://dl.winehq.org/wine-builds/winehq.key /winehq.key
+# Install Wine and necessary tools
+RUN apt-get update && apt-get install -y wine64 wget unzip
 
-# Disable interactive prompts during package installation
-ENV DEBIAN_FRONTEND=noninteractive
+# Create the MT5 directory structure
+RUN mkdir -p "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/"
 
-# Install Wine
-RUN apt-get update && \
-	apt-get install -y gnupg apt-utils && \
-	echo "deb http://dl.winehq.org/wine-builds/ubuntu/ focal main" >> /etc/apt/sources.list && \
-	apt-key add /winehq.key && \
-	mv /winehq.key /usr/share/keyrings/winehq-archive.key && \
-	dpkg --add-architecture i386 && \
-	apt-get update && \
-	apt-get install -y -q --install-recommends winehq-devel && \
-	rm -rf /var/lib/apt/lists/* /winehq.key
+# Copy your HFT strategy into the container
+COPY ./hft.mq5 "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/"
 
-# Add wine user.
-# NOTE: You might need to change the UID/GID so the
-# wine user has write access to your MetaTrader
-# directory at $METATRADER_HOST_PATH.
-RUN groupadd -g 1000 wine \
-	&& useradd -g wine -u 1000 wine \
-	&& mkdir -p /home/wine/.wine && chown -R wine:wine /home/wine
+# Set the working directory
+WORKDIR "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/"
 
-# Run MetaTrader as non privileged user.
-USER wine
-COPY ./hft.mq5 "/root/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/"
+# Fix permissions for the headless user
+RUN chown -R 1000:0 /home/headless/.wine
 
+USER 1000
 
-# Autorun MetaTrader Terminal.
-ENTRYPOINT [ "wine" ]
-CMD [ "/MetaTrader/terminal64.exe", "/portable" ]
+# Railway uses the PORT environment variable; noVNC usually runs on 6901
+EXPOSE 6901
+
+# Start the desktop environment and MT5
+CMD ["sh", "-c", "/dockerstartup/vnc_startup.sh && wine64 terminal64.exe /portable"]
