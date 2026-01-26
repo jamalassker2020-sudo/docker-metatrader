@@ -1,7 +1,8 @@
-# Step 1: Use official Ubuntu 22.04
+# =========================
+# BASE IMAGE
+# =========================
 FROM ubuntu:22.04
 
-# Step 2: Set non-interactive environment
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:1 \
     HOME=/root \
@@ -12,8 +13,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 USER root
 
-# Step 3: Install Wine + VNC tools (Added architecture support)
-RUN dpkg --add-architecture i386 && apt-get update && apt-get install -y --no-install-recommends \
+# =========================
+# INSTALL DEPENDENCIES
+# =========================
+RUN dpkg --add-architecture i386 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wine \
     wine64 \
     wine32 \
     xvfb \
@@ -22,67 +28,73 @@ RUN dpkg --add-architecture i386 && apt-get update && apt-get install -y --no-in
     novnc \
     websockify \
     openbox \
+    python3-xdg \
     wget \
-    ca-certificates \
-    unzip && \
+    unzip \
+    ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Step 4: Download MT5 and Copy Strategy
+# =========================
+# DOWNLOAD MT5 + EA
+# =========================
 RUN wget https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
 COPY hft.mq5 /root/hft.mq5
 
-# Step 5: Create Startup Script
-RUN echo '#!/bin/bash\n\
-# Cleanup locks\n\
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
-\n\
-# Start Xvfb & Window Manager\n\
-Xvfb :1 -screen 0 ${SCREEN_RESOLUTION}x24 &\n\
-sleep 2\n\
-openbox-session &\n\
-\n\
-# Start VNC server & noVNC\n\
-x11vnc -display :1 -nopw -listen localhost -forever -bg &\n\
-/usr/share/novnc/utils/launch.sh --vnc localhost:5900 --listen 6901 &\n\
-\n\
-# Initialize Wine\n\
-if [ ! -d "/root/.wine" ]; then\n\
-  wine wineboot --init\n\
-  sleep 10\n\
-fi\n\
-\n\
-MT5_PATH="/root/.wine/drive_c/Program Files/MetaTrader 5"\n\
-\n\
-# Install MT5 if not present\n\
-if [ ! -f "$MT5_PATH/terminal64.exe" ]; then\n\
-  echo "Installing MT5 via Wine..."\n\
-  wine /root/mt5setup.exe /portable /auto\n\
-  \n\
-  # Wait loop for installation\n\
-  for i in {1..60}; do\n\
-    if [ -f "$MT5_PATH/terminal64.exe" ]; then\n\
-      echo "MT5 installation completed"\n\
-      break\n\
-    fi\n\
-    sleep 2\n\
-  done\n\
-fi\n\
-\n\
-# Setup MQL5 folders and Strategy\n\
-mkdir -p "$MT5_PATH/MQL5/Experts/"\n\
-mkdir -p "$MT5_PATH/config/"\n\
-cp /root/hft.mq5 "$MT5_PATH/MQL5/Experts/"\n\
-\n\
-# Inject Top 20 Crypto Symbols\n\
-printf "[Charts]\nsymbol0=BTCUSD\nsymbol1=ETHUSD\nsymbol2=SOLUSD\nsymbol3=BNBUSD\nsymbol4=XRPUSD\nsymbol5=ADAUSD\nsymbol6=DOGEUSD\nsymbol7=TRXUSD\nsymbol8=DOTUSD\nsymbol9=LINKUSD\nsymbol10=AVAXUSD\nsymbol11=SHIBUSD\nsymbol12=MATICUSD\nsymbol13=LTCUSD\nsymbol14=UNIUSD\nsymbol15=BCHUSD\nsymbol16=ETCUSD\nsymbol17=ATOMUSD\nsymbol18=XMRUSD\nsymbol19=XLMUSD\n" > "$MT5_PATH/config/common.ini"\n\
-\n\
-echo "Starting MT5 Terminal..."\n\
-wine "$MT5_PATH/terminal64.exe" /portable\n\
-\n\
-sleep infinity' > /start.sh && \
-    chmod +x /start.sh
+# =========================
+# STARTUP SCRIPT
+# =========================
+RUN cat << 'EOF' > /start.sh
+#!/bin/bash
+set -e
 
-# Step 6: Final config
+echo "=== CLEANUP X LOCKS ==="
+rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
+
+echo "=== START XVFB ==="
+Xvfb :1 -screen 0 1280x720x24 &
+sleep 3
+
+echo "=== START OPENBOX ==="
+openbox-session &
+sleep 2
+
+echo "=== START VNC + NOVNC ==="
+x11vnc -display :1 -nopw -listen localhost -forever -bg
+/usr/share/novnc/utils/launch.sh --vnc localhost:5900 --listen 6901 &
+
+echo "=== INIT WINE ==="
+if [ ! -d "/root/.wine" ]; then
+  wineboot --init
+  sleep 10
+fi
+
+MT5_PATH="/root/.wine/drive_c/Program Files/MetaTrader 5"
+
+echo "=== INSTALL MT5 IF NEEDED ==="
+if [ ! -f "$MT5_PATH/terminal64.exe" ]; then
+  wine /root/mt5setup.exe /portable /auto
+  for i in {1..60}; do
+    [ -f "$MT5_PATH/terminal64.exe" ] && break
+    sleep 2
+  done
+fi
+
+echo "=== COPY EA ==="
+mkdir -p "$MT5_PATH/MQL5/Experts"
+cp /root/hft.mq5 "$MT5_PATH/MQL5/Experts/"
+
+echo "=== START MT5 ==="
+wine "$MT5_PATH/terminal64.exe" /portable
+
+sleep infinity
+EOF
+
+RUN chmod +x /start.sh
+
+# =========================
+# EXPOSE NOVNC
+# =========================
 EXPOSE 6901
+
 CMD ["/bin/bash", "/start.sh"]
