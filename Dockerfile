@@ -22,24 +22,23 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Copy and Prepare MetaTrader 5
+# 2. Copy Expert Advisor
 COPY hft.mq5 /tmp/hft.mq5
 
+# 3. Install MetaTrader 5
 RUN wget https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5ubuntu.sh \
     && chmod +x mt5ubuntu.sh \
     && ./mt5ubuntu.sh
 
-# 3. Move EA to the correct Experts folder
+# 4. Move EA to MT5 Experts folder
 RUN mkdir -p "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts" && \
     cp /tmp/hft.mq5 "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/"
 
-# 4. Correct Permissions for the headless user
+# 5. Fix permissions (Railway-safe)
 RUN chown -R 1000:0 /home/headless
 
-# Use the non-privileged user
+# Run as non-root user
 USER 1000
 
-# 5. Corrected Startup Command
-# We call the main startup.sh which handles the VNC initialization properly.
-# The --wait flag ensures the desktop is ready before launching MT5.
+# 6. Correct startup script (G3 compatible)
 CMD ["/dockerstartup/startup.sh", "--wait", "wine64", "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe", "/portable"]
