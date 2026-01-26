@@ -1,5 +1,4 @@
 
-cat << 'EOF' > /root/.wine/drive_c/Program\ Files/MetaTrader\ 5/MQL5/Experts/hft.mq5
 //+------------------------------------------------------------------+
 //|                                              HFT_Ultra_2026.mq5  |
 //|                                    HFT Ultra 2026 Expert Advisor |
@@ -343,4 +342,3 @@ void ManagePositions()
 }
 
 void OnTradeTransaction(const MqlTradeTransaction& trans, const MqlTradeRequest& req, const MqlTradeResult& res) {}
-EOF
