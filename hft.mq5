@@ -1,4 +1,3 @@
-
 1 //+------------------------------------------------------------------+
    2 //|                                         HFT_PRO_2026_FIXED.mq5   |
    3 //|                        HFT PRO 2026 - Multi-Strategy Auto Scalper|
@@ -497,400 +496,400 @@
  496       return 0;
  497 
  498    return maBuffer[0];
- 499 }
- 500 
- 501 //+------------------------------------------------------------------+
- 502 //| Get Momentum (Rate of Change)                                     |
- 503 //+------------------------------------------------------------------+
- 504 double GetMomentum(string symbol, int periods = 14)
- 505 {
- 506    double closes[];
- 507    ArraySetAsSeries(closes, true);
- 508 
- 509    if(CopyClose(symbol, PERIOD_M1, 0, periods + 1, closes) < periods + 1)
- 510       return 0;
- 511 
- 512    if(closes[periods] == 0)
- 513       return 0;
- 514 
- 515    return ((closes[0] - closes[periods]) / closes[periods]) * 100;
- 516 }
- 517 
- 518 //+------------------------------------------------------------------+
- 519 //| Multi-Strategy Signal Generation                                  |
- 520 //+------------------------------------------------------------------+
- 521 void GetSignal(int idx, int &signalType, int &strength, int &score)
- 522 {
- 523    signalType = 0; // 0 = none, 1 = buy, -1 = sell
- 524    strength = 0;
- 525    score = 50;     // Start at neutral 50
- 526 
- 527    if(idx < 0 || idx >= g_symbolCount || !g_symbols[idx].isValid)
- 528       return;
- 529 
- 530    string symbol = g_symbols[idx].name;
- 531    string type = g_symbols[idx].type;
- 532    double pip = g_symbols[idx].pip;
- 533 
- 534    if(!m_symbol.Name(symbol))    // FIXED: m_symbol
- 535       return;
- 536 
- 537    if(!m_symbol.RefreshRates())  // FIXED: m_symbol
- 538       return;
- 539 
- 540    double bid = m_symbol.Bid();  // FIXED: m_symbol
- 541    double ask = m_symbol.Ask();  // FIXED: m_symbol
- 542    int digits = (int)m_symbol.Digits(); // FIXED: m_symbol
- 543 
- 544    // FIXED: Better pip calculation for spread check
- 545    double effectivePip = GetPipValue(symbol, digits);
- 546    if(effectivePip <= 0) effectivePip = pip;
- 547 
- 548    // Spread check
- 549    double spreadValue = ask - bid;
- 550 
- 551    if(type == "gold")
- 552    {
- 553       double spreadCents = spreadValue * 100;
- 554       if(spreadCents > InpGoldSpreadCents) return;
- 555    }
- 556    else
- 557    {
- 558       double spreadPips = spreadValue / effectivePip;
- 559       if(spreadPips > InpMaxSpreadPips) return;
- 560    }
- 561 
- 562    double mid = (bid + ask) / 2;
- 563    double priceChange = GetPriceChange(idx);
- 564    double momentum = GetMomentum(symbol);
- 565    double rsi = GetRSI(idx);
- 566    double ma20 = GetMA20(idx);
- 567 
- 568    bool isJpy = StringFind(symbol, "JPY") >= 0;
- 569    bool isGold = (type == "gold");
- 570 
- 571    // === STRATEGY 1: MOMENTUM ===
- 572    if(InpUseMomentum)
- 573    {
- 574       if(priceChange > 0.5)
- 575       {
- 576          score += 12;
- 577          strength++;
- 578       }
- 579       else if(priceChange < -0.5)
- 580       {
- 581          score -= 12;
- 582          strength++;
- 583       }
- 584    }
- 585 
- 586    // === STRATEGY 2: TREND CONTINUATION ===
- 587    if(InpUseTrend)
- 588    {
- 589       double prevMid = g_symbols[idx].prevMid;
- 590       if(prevMid > 0)
- 591       {
- 592          if(priceChange > 0.2 && mid > prevMid)
- 593          {
- 594             score += 8;
- 595             strength++;
- 596          }
- 597          else if(priceChange < -0.2 && mid < prevMid)
- 598          {
- 599             score -= 8;
- 600             strength++;
- 601          }
- 602       }
- 603    }
- 604 
- 605    // === STRATEGY 3: VOLATILITY BREAKOUT ===
- 606    if(InpUseBreakout)
- 607    {
- 608       if(MathAbs(priceChange) > 1.5)
- 609       {
- 610          if(priceChange > 0)
- 611             score += 15;
- 612          else
- 613             score -= 15;
- 614          strength += 2;
- 615       }
- 616    }
- 617 
- 618    // === STRATEGY 4: MEAN REVERSION (RSI) ===
- 619    if(InpUseReversion)
- 620    {
- 621       if(rsi < 30)
- 622       {
- 623          score += 10;
- 624          strength++;
- 625       }
- 626       else if(rsi > 70)
- 627       {
- 628          score -= 10;
- 629          strength++;
- 630       }
- 631    }
- 632 
- 633    // === STRATEGY 5: CORRELATION (Gold inverse to USD strength) ===
- 634    if(InpUseCorrelation && isGold && g_eurusdIndex >= 0)
- 635    {
- 636       double eurusdChange = GetPriceChange(g_eurusdIndex);
- 637       // EUR/USD up = USD weak = Gold up
- 638       if(eurusdChange > 0.3)
- 639          score += 8;
- 640       else if(eurusdChange < -0.3)
- 641          score -= 8;
- 642    }
- 643 
- 644    // === STRATEGY 6: JPY PAIRS MOMENTUM ===
- 645    if(InpUseJpyMomentum && isJpy)
- 646    {
- 647       if(MathAbs(priceChange) > 1)
- 648       {
- 649          if(priceChange > 0)
- 650             score += 10;
- 651          else
- 652             score -= 10;
- 653          strength++;
- 654       }
- 655    }
- 656 
- 657    // === STRATEGY 7: SCALP (Quick momentum) ===
- 658    if(momentum > 0.1)
- 659       score += 5;
- 660    else if(momentum < -0.1)
- 661       score -= 5;
- 662 
- 663    // === STRATEGY 8: GRID-like (Strengthen strong signals) ===
- 664    if(MathAbs(score - 50) > 20)
- 665    {
- 666       if(score > 50)
- 667          score += 3;
- 668       else
- 669          score -= 3;
- 670    }
- 671 
- 672    // === STRATEGY 9: RSI CONFIRMATION ===
- 673    // FIXED: Only count once, check score direction matches RSI
- 674    if(score > 55 && rsi < 60 && rsi > 30)
- 675       strength++; // Bullish + RSI not extreme
- 676    else if(score < 45 && rsi > 40 && rsi < 70)
- 677       strength++; // Bearish + RSI not extreme
- 678 
- 679    // === STRATEGY 10: TREND ALIGNMENT (MA) ===
- 680    if(ma20 > 0)
- 681    {
- 682       if(mid > ma20 && score > 50)
- 683          strength++;
- 684       else if(mid < ma20 && score < 50)
- 685          strength++;
- 686    }
- 687 
- 688    // Clamp score to 0-100
- 689    score = (int)MathMax(0, MathMin(100, score));
- 690 
- 691    // Determine signal
- 692    int buyThreshold = InpThreshold + InpEntryOffset;      // 55 + 12 = 67
- 693    int sellThreshold = 100 - InpThreshold - InpEntryOffset; // 100 - 55 - 12 = 33
- 694 
- 695    if(score >= buyThreshold && strength >= InpMinStrength)
- 696       signalType = 1; // BUY
- 697    else if(score <= sellThreshold && strength >= InpMinStrength)
- 698       signalType = -1; // SELL
- 699 }
- 700 
- 701 //+------------------------------------------------------------------+
- 702 //| Scan all symbols for trading signals                              |
- 703 //+------------------------------------------------------------------+
- 704 void ScanForSignals()
- 705 {
- 706    // Check max positions first
- 707    int currentPositions = CountPositions();
- 708    if(currentPositions >= InpMaxPositions)
- 709       return;
- 710 
- 711    datetime now = TimeCurrent();
- 712 
- 713    for(int i = 0; i < g_symbolCount; i++)
- 714    {
- 715       // Skip invalid symbols
- 716       if(!g_symbols[i].isValid)
- 717          continue;
- 718 
- 719       string symbol = g_symbols[i].name;
- 720 
- 721       // FIXED: Cooldown check using seconds consistently
- 722       if(g_symbols[i].lastTradeTime > 0)
- 723       {
- 724          int secondsSinceLastTrade = (int)(now - g_symbols[i].lastTradeTime);
- 725          if(secondsSinceLastTrade < InpCooldownSec)
- 726             continue;
- 727       }
- 728 
- 729       // Already in position on this symbol?
- 730       if(HasPositionOnSymbol(symbol))
- 731          continue;
- 732 
- 733       // Check max positions again (might have changed)
- 734       if(CountPositions() >= InpMaxPositions)
- 735          return;
- 736 
- 737       // Get signal
- 738       int signalType, strength, score;
- 739       GetSignal(i, signalType, strength, score);
- 740 
- 741       if(signalType == 0)
- 742          continue;
- 743 
- 744       // Execute trade
- 745       ExecuteTrade(i, signalType, strength, score);
- 746    }
- 747 }
- 748 
- 749 //+------------------------------------------------------------------+
- 750 //| Execute a trade                                                   |
- 751 //+------------------------------------------------------------------+
- 752 void ExecuteTrade(int idx, int signalType, int strength, int score)
- 753 {
- 754    if(idx < 0 || idx >= g_symbolCount || !g_symbols[idx].isValid)
- 755       return;
- 756 
- 757    string symbol = g_symbols[idx].name;
- 758    double pip = g_symbols[idx].pip;
- 759 
- 760    if(!m_symbol.Name(symbol))    // FIXED: m_symbol
- 761       return;
- 762 
- 763    if(!m_symbol.RefreshRates())  // FIXED: m_symbol
- 764       return;
- 765 
- 766    int digits = (int)m_symbol.Digits(); // FIXED: m_symbol
- 767    double bid = m_symbol.Bid();  // FIXED: m_symbol
- 768    double ask = m_symbol.Ask();  // FIXED: m_symbol
- 769 
- 770    // FIXED: Use GetPipValue for correct pip calculation
- 771    double effectivePip = GetPipValue(symbol, digits);
- 772    if(effectivePip <= 0) effectivePip = pip;
- 773 
- 774    // FIXED: Normalize lot size properly
- 775    double lotSize = NormalizeLotSize(symbol, InpLotSize);
- 776 
- 777    // Calculate SL and TP
- 778    double sl, tp;
- 779 
- 780    if(signalType == 1) // BUY
- 781    {
- 782       double entryPrice = ask;
- 783       sl = NormalizeDouble(entryPrice - InpStopLoss * effectivePip, digits);
- 784       tp = NormalizeDouble(entryPrice + InpTakeProfit * effectivePip, digits);
- 785 
- 786       // Validate SL/TP
- 787       double minStopLevel = m_symbol.StopsLevel() * m_symbol.Point(); // FIXED: m_symbol
- 788       if(entryPrice - sl < minStopLevel)
- 789          sl = NormalizeDouble(entryPrice - minStopLevel - effectivePip, digits);
- 790       if(tp - entryPrice < minStopLevel)
- 791          tp = NormalizeDouble(entryPrice + minStopLevel + effectivePip, digits);
- 792 
- 793       if(trade.Buy(lotSize, symbol, entryPrice, sl, tp, InpComment))
- 794       {
- 795          g_symbols[idx].lastTradeTime = TimeCurrent();
- 796          Print("▲ BUY ", symbol, " @ ", DoubleToString(entryPrice, digits),
- 797                " | Lot: ", DoubleToString(lotSize, 2),
- 798                " | Score: ", score, " | Str: ", strength,
- 799                " | SL: ", DoubleToString(sl, digits),
- 800                " | TP: ", DoubleToString(tp, digits));
- 801       }
- 802       else
- 803       {
- 804          Print("✗ Buy failed: ", symbol, " | Error: ", GetLastError());
- 805       }
- 806    }
- 807    else if(signalType == -1) // SELL
- 808    {
- 809       double entryPrice = bid;
- 810       sl = NormalizeDouble(entryPrice + InpStopLoss * effectivePip, digits);
- 811       tp = NormalizeDouble(entryPrice - InpTakeProfit * effectivePip, digits);
- 812 
- 813       // Validate SL/TP
- 814       double minStopLevel = m_symbol.StopsLevel() * m_symbol.Point(); // FIXED: m_symbol
- 815       if(sl - entryPrice < minStopLevel)
- 816          sl = NormalizeDouble(entryPrice + minStopLevel + effectivePip, digits);
- 817       if(entryPrice - tp < minStopLevel)
- 818          tp = NormalizeDouble(entryPrice - minStopLevel - effectivePip, digits);
- 819 
- 820       if(trade.Sell(lotSize, symbol, entryPrice, sl, tp, InpComment))
- 821       {
- 822          g_symbols[idx].lastTradeTime = TimeCurrent();
- 823          Print("▼ SELL ", symbol, " @ ", DoubleToString(entryPrice, digits),
- 824                " | Lot: ", DoubleToString(lotSize, 2),
- 825                " | Score: ", score, " | Str: ", strength,
- 826                " | SL: ", DoubleToString(sl, digits),
- 827                " | TP: ", DoubleToString(tp, digits));
- 828       }
- 829       else
- 830       {
- 831          Print("✗ Sell failed: ", symbol, " | Error: ", GetLastError());
- 832       }
- 833    }
- 834 }
- 835 
- 836 //+------------------------------------------------------------------+
- 837 //| Manage existing positions - trailing stops                        |
- 838 //+------------------------------------------------------------------+
- 839 void ManagePositions()
- 840 {
- 841    for(int i = PositionsTotal() - 1; i >= 0; i--)
- 842    {
- 843       if(!posInfo.SelectByIndex(i))
- 844          continue;
- 845 
- 846       if(posInfo.Magic() != InpMagicNumber)
- 847          continue;
- 848 
- 849       string symbol = posInfo.Symbol();
- 850 
- 851       if(!m_symbol.Name(symbol))    // FIXED: m_symbol
- 852          continue;
- 853 
- 854       if(!m_symbol.RefreshRates())  // FIXED: m_symbol
- 855          continue;
- 856 
- 857       int digits = (int)m_symbol.Digits(); // FIXED: m_symbol
- 858       double point = m_symbol.Point();     // FIXED: m_symbol
- 859       double bid = m_symbol.Bid();         // FIXED: m_symbol
- 860       double ask = m_symbol.Ask();         // FIXED: m_symbol
- 861 
- 862       // FIXED: Find symbol config for correct pip value
- 863       int symIdx = -1;
- 864       for(int j = 0; j < g_symbolCount; j++)
- 865       {
- 866          if(g_symbols[j].name == symbol)
- 867          {
- 868             symIdx = j;
- 869             break;
- 870          }
- 871       }
- 872 
- 873       // FIXED: Calculate pip correctly
- 874       double pip;
- 875       if(symIdx >= 0 && g_symbols[symIdx].isValid)
- 876          pip = g_symbols[symIdx].pip;
- 877       else
- 878          pip = GetPipValue(symbol, digits);
- 879 
- 880       if(pip <= 0) pip = point * 10; // Fallback
- 881 
- 882       double openPrice = posInfo.PriceOpen();
- 883       double currentSL = posInfo.StopLoss();
- 884       double currentTP = posInfo.TakeProfit();
- 885 
- 886       ENUM_POSITION_TYPE posType = posInfo.PositionType();
- 887 
- 888       // Calculate current profit in pips
- 889       double currentPrice = (posType == POSITION_TYPE_BUY) ? bid : ask;
- 890       double profitPips;
- 891 
- 892       if(posType == POSITION_TYPE_BUY)
+ 500 }
+ 501 
+ 502 //+------------------------------------------------------------------+
+ 503 //| Get Momentum (Rate of Change)                                     |
+ 504 //+------------------------------------------------------------------+
+ 505 double GetMomentum(string symbol, int periods = 14)
+ 506 {
+ 507    double closes[];
+ 508    ArraySetAsSeries(closes, true);
+ 509 
+ 510    if(CopyClose(symbol, PERIOD_M1, 0, periods + 1, closes) < periods + 1)
+ 511       return 0;
+ 512 
+ 513    if(closes[periods] == 0)
+ 514       return 0;
+ 515 
+ 516    return ((closes[0] - closes[periods]) / closes[periods]) * 100;
+ 517 }
+ 518 
+ 519 //+------------------------------------------------------------------+
+ 520 //| Multi-Strategy Signal Generation                                  |
+ 521 //+------------------------------------------------------------------+
+ 522 void GetSignal(int idx, int &signalType, int &strength, int &score)
+ 523 {
+ 524    signalType = 0; // 0 = none, 1 = buy, -1 = sell
+ 525    strength = 0;
+ 526    score = 50;     // Start at neutral 50
+ 527 
+ 528    if(idx < 0 || idx >= g_symbolCount || !g_symbols[idx].isValid)
+ 529       return;
+ 530 
+ 531    string symbol = g_symbols[idx].name;
+ 532    string type = g_symbols[idx].type;
+ 533    double pip = g_symbols[idx].pip;
+ 534 
+ 535    if(!m_symbol.Name(symbol))    // FIXED: m_symbol
+ 536       return;
+ 537 
+ 538    if(!m_symbol.RefreshRates())  // FIXED: m_symbol
+ 539       return;
+ 540 
+ 541    double bid = m_symbol.Bid();  // FIXED: m_symbol
+ 542    double ask = m_symbol.Ask();  // FIXED: m_symbol
+ 543    int digits = (int)m_symbol.Digits(); // FIXED: m_symbol
+ 544 
+ 545    // FIXED: Better pip calculation for spread check
+ 546    double effectivePip = GetPipValue(symbol, digits);
+ 547    if(effectivePip <= 0) effectivePip = pip;
+ 548 
+ 549    // Spread check
+ 550    double spreadValue = ask - bid;
+ 551 
+ 552    if(type == "gold")
+ 553    {
+ 554       double spreadCents = spreadValue * 100;
+ 555       if(spreadCents > InpGoldSpreadCents) return;
+ 556    }
+ 557    else
+ 558    {
+ 559       double spreadPips = spreadValue / effectivePip;
+ 560       if(spreadPips > InpMaxSpreadPips) return;
+ 561    }
+ 562 
+ 563    double mid = (bid + ask) / 2;
+ 564    double priceChange = GetPriceChange(idx);
+ 565    double momentum = GetMomentum(symbol);
+ 566    double rsi = GetRSI(idx);
+ 567    double ma20 = GetMA20(idx);
+ 568 
+ 569    bool isJpy = StringFind(symbol, "JPY") >= 0;
+ 570    bool isGold = (type == "gold");
+ 571 
+ 572    // === STRATEGY 1: MOMENTUM ===
+ 573    if(InpUseMomentum)
+ 574    {
+ 575       if(priceChange > 0.5)
+ 576       {
+ 577          score += 12;
+ 578          strength++;
+ 579       }
+ 580       else if(priceChange < -0.5)
+ 581       {
+ 582          score -= 12;
+ 583          strength++;
+ 584       }
+ 585    }
+ 586 
+ 587    // === STRATEGY 2: TREND CONTINUATION ===
+ 588    if(InpUseTrend)
+ 589    {
+ 590       double prevMid = g_symbols[idx].prevMid;
+ 591       if(prevMid > 0)
+ 592       {
+ 593          if(priceChange > 0.2 && mid > prevMid)
+ 594          {
+ 595             score += 8;
+ 596             strength++;
+ 597          }
+ 598          else if(priceChange < -0.2 && mid < prevMid)
+ 599          {
+ 600             score -= 8;
+ 601             strength++;
+ 602          }
+ 603       }
+ 604    }
+ 605 
+ 606    // === STRATEGY 3: VOLATILITY BREAKOUT ===
+ 607    if(InpUseBreakout)
+ 608    {
+ 609       if(MathAbs(priceChange) > 1.5)
+ 610       {
+ 611          if(priceChange > 0)
+ 612             score += 15;
+ 613          else
+ 614             score -= 15;
+ 615          strength += 2;
+ 616       }
+ 617    }
+ 618 
+ 619    // === STRATEGY 4: MEAN REVERSION (RSI) ===
+ 620    if(InpUseReversion)
+ 621    {
+ 622       if(rsi < 30)
+ 623       {
+ 624          score += 10;
+ 625          strength++;
+ 626       }
+ 627       else if(rsi > 70)
+ 628       {
+ 629          score -= 10;
+ 630          strength++;
+ 631       }
+ 632    }
+ 633 
+ 634    // === STRATEGY 5: CORRELATION (Gold inverse to USD strength) ===
+ 635    if(InpUseCorrelation && isGold && g_eurusdIndex >= 0)
+ 636    {
+ 637       double eurusdChange = GetPriceChange(g_eurusdIndex);
+ 638       // EUR/USD up = USD weak = Gold up
+ 639       if(eurusdChange > 0.3)
+ 640          score += 8;
+ 641       else if(eurusdChange < -0.3)
+ 642          score -= 8;
+ 643    }
+ 644 
+ 645    // === STRATEGY 6: JPY PAIRS MOMENTUM ===
+ 646    if(InpUseJpyMomentum && isJpy)
+ 647    {
+ 648       if(MathAbs(priceChange) > 1)
+ 649       {
+ 650          if(priceChange > 0)
+ 651             score += 10;
+ 652          else
+ 653             score -= 10;
+ 654          strength++;
+ 655       }
+ 656    }
+ 657 
+ 658    // === STRATEGY 7: SCALP (Quick momentum) ===
+ 659    if(momentum > 0.1)
+ 660       score += 5;
+ 661    else if(momentum < -0.1)
+ 662       score -= 5;
+ 663 
+ 664    // === STRATEGY 8: GRID-like (Strengthen strong signals) ===
+ 665    if(MathAbs(score - 50) > 20)
+ 666    {
+ 667       if(score > 50)
+ 668          score += 3;
+ 669       else
+ 670          score -= 3;
+ 671    }
+ 672 
+ 673    // === STRATEGY 9: RSI CONFIRMATION ===
+ 674    // FIXED: Only count once, check score direction matches RSI
+ 675    if(score > 55 && rsi < 60 && rsi > 30)
+ 676       strength++; // Bullish + RSI not extreme
+ 677    else if(score < 45 && rsi > 40 && rsi < 70)
+ 678       strength++; // Bearish + RSI not extreme
+ 679 
+ 680    // === STRATEGY 10: TREND ALIGNMENT (MA) ===
+ 681    if(ma20 > 0)
+ 682    {
+ 683       if(mid > ma20 && score > 50)
+ 684          strength++;
+ 685       else if(mid < ma20 && score < 50)
+ 686          strength++;
+ 687    }
+ 688 
+ 689    // Clamp score to 0-100
+ 690    score = (int)MathMax(0, MathMin(100, score));
+ 691 
+ 692    // Determine signal
+ 693    int buyThreshold = InpThreshold + InpEntryOffset;      // 55 + 12 = 67
+ 694    int sellThreshold = 100 - InpThreshold - InpEntryOffset; // 100 - 55 - 12 = 33
+ 695 
+ 696    if(score >= buyThreshold && strength >= InpMinStrength)
+ 697       signalType = 1; // BUY
+ 698    else if(score <= sellThreshold && strength >= InpMinStrength)
+ 699       signalType = -1; // SELL
+ 700 }
+ 701 
+ 702 //+------------------------------------------------------------------+
+ 703 //| Scan all symbols for trading signals                              |
+ 704 //+------------------------------------------------------------------+
+ 705 void ScanForSignals()
+ 706 {
+ 707    // Check max positions first
+ 708    int currentPositions = CountPositions();
+ 709    if(currentPositions >= InpMaxPositions)
+ 710       return;
+ 711 
+ 712    datetime now = TimeCurrent();
+ 713 
+ 714    for(int i = 0; i < g_symbolCount; i++)
+ 715    {
+ 716       // Skip invalid symbols
+ 717       if(!g_symbols[i].isValid)
+ 718          continue;
+ 719 
+ 720       string symbol = g_symbols[i].name;
+ 721 
+ 722       // FIXED: Cooldown check using seconds consistently
+ 723       if(g_symbols[i].lastTradeTime > 0)
+ 724       {
+ 725          int secondsSinceLastTrade = (int)(now - g_symbols[i].lastTradeTime);
+ 726          if(secondsSinceLastTrade < InpCooldownSec)
+ 727             continue;
+ 728       }
+ 729 
+ 730       // Already in position on this symbol?
+ 731       if(HasPositionOnSymbol(symbol))
+ 732          continue;
+ 733 
+ 734       // Check max positions again (might have changed)
+ 735       if(CountPositions() >= InpMaxPositions)
+ 736          return;
+ 737 
+ 738       // Get signal
+ 739       int signalType, strength, score;
+ 740       GetSignal(i, signalType, strength, score);
+ 741 
+ 742       if(signalType == 0)
+ 743          continue;
+ 744 
+ 745       // Execute trade
+ 746       ExecuteTrade(i, signalType, strength, score);
+ 747    }
+ 748 }
+ 749 
+ 750 //+------------------------------------------------------------------+
+ 751 //| Execute a trade                                                   |
+ 752 //+------------------------------------------------------------------+
+ 753 void ExecuteTrade(int idx, int signalType, int strength, int score)
+ 754 {
+ 755    if(idx < 0 || idx >= g_symbolCount || !g_symbols[idx].isValid)
+ 756       return;
+ 757 
+ 758    string symbol = g_symbols[idx].name;
+ 759    double pip = g_symbols[idx].pip;
+ 760 
+ 761    if(!m_symbol.Name(symbol))    // FIXED: m_symbol
+ 762       return;
+ 763 
+ 764    if(!m_symbol.RefreshRates())  // FIXED: m_symbol
+ 765       return;
+ 766 
+ 767    int digits = (int)m_symbol.Digits(); // FIXED: m_symbol
+ 768    double bid = m_symbol.Bid();  // FIXED: m_symbol
+ 769    double ask = m_symbol.Ask();  // FIXED: m_symbol
+ 770 
+ 771    // FIXED: Use GetPipValue for correct pip calculation
+ 772    double effectivePip = GetPipValue(symbol, digits);
+ 773    if(effectivePip <= 0) effectivePip = pip;
+ 774 
+ 775    // FIXED: Normalize lot size properly
+ 776    double lotSize = NormalizeLotSize(symbol, InpLotSize);
+ 777 
+ 778    // Calculate SL and TP
+ 779    double sl, tp;
+ 780 
+ 781    if(signalType == 1) // BUY
+ 782    {
+ 783       double entryPrice = ask;
+ 784       sl = NormalizeDouble(entryPrice - InpStopLoss * effectivePip, digits);
+ 785       tp = NormalizeDouble(entryPrice + InpTakeProfit * effectivePip, digits);
+ 786 
+ 787       // Validate SL/TP
+ 788       double minStopLevel = m_symbol.StopsLevel() * m_symbol.Point(); // FIXED: m_symbol
+ 789       if(entryPrice - sl < minStopLevel)
+ 790          sl = NormalizeDouble(entryPrice - minStopLevel - effectivePip, digits);
+ 791       if(tp - entryPrice < minStopLevel)
+ 792          tp = NormalizeDouble(entryPrice + minStopLevel + effectivePip, digits);
+ 793 
+ 794       if(trade.Buy(lotSize, symbol, entryPrice, sl, tp, InpComment))
+ 795       {
+ 796          g_symbols[idx].lastTradeTime = TimeCurrent();
+ 797          Print("▲ BUY ", symbol, " @ ", DoubleToString(entryPrice, digits),
+ 798                " | Lot: ", DoubleToString(lotSize, 2),
+ 799                " | Score: ", score, " | Str: ", strength,
+ 800                " | SL: ", DoubleToString(sl, digits),
+ 801                " | TP: ", DoubleToString(tp, digits));
+ 802       }
+ 803       else
+ 804       {
+ 805          Print("✗ Buy failed: ", symbol, " | Error: ", GetLastError());
+ 806       }
+ 807    }
+ 808    else if(signalType == -1) // SELL
+ 809    {
+ 810       double entryPrice = bid;
+ 811       sl = NormalizeDouble(entryPrice + InpStopLoss * effectivePip, digits);
+ 812       tp = NormalizeDouble(entryPrice - InpTakeProfit * effectivePip, digits);
+ 813 
+ 814       // Validate SL/TP
+ 815       double minStopLevel = m_symbol.StopsLevel() * m_symbol.Point(); // FIXED: m_symbol
+ 816       if(sl - entryPrice < minStopLevel)
+ 817          sl = NormalizeDouble(entryPrice + minStopLevel + effectivePip, digits);
+ 818       if(entryPrice - tp < minStopLevel)
+ 819          tp = NormalizeDouble(entryPrice - minStopLevel - effectivePip, digits);
+ 820 
+ 821       if(trade.Sell(lotSize, symbol, entryPrice, sl, tp, InpComment))
+ 822       {
+ 823          g_symbols[idx].lastTradeTime = TimeCurrent();
+ 824          Print("▼ SELL ", symbol, " @ ", DoubleToString(entryPrice, digits),
+ 825                " | Lot: ", DoubleToString(lotSize, 2),
+ 826                " | Score: ", score, " | Str: ", strength,
+ 827                " | SL: ", DoubleToString(sl, digits),
+ 828                " | TP: ", DoubleToString(tp, digits));
+ 829       }
+ 830       else
+ 831       {
+ 832          Print("✗ Sell failed: ", symbol, " | Error: ", GetLastError());
+ 833       }
+ 834    }
+ 835 }
+ 836 
+ 837 //+------------------------------------------------------------------+
+ 838 //| Manage existing positions - trailing stops                        |
+ 839 //+------------------------------------------------------------------+
+ 840 void ManagePositions()
+ 841 {
+ 842    for(int i = PositionsTotal() - 1; i >= 0; i--)
+ 943    {
+ 944       if(!posInfo.SelectByIndex(i))
+ 845          continue;
+ 846 
+ 847       if(posInfo.Magic() != InpMagicNumber)
+ 848          continue;
+ 849 
+ 850       string symbol = posInfo.Symbol();
+ 851 
+ 852       if(!m_symbol.Name(symbol))    // FIXED: m_symbol
+ 853          continue;
+ 854 
+ 855       if(!m_symbol.RefreshRates())  // FIXED: m_symbol
+ 856          continue;
+ 857 
+ 858       int digits = (int)m_symbol.Digits(); // FIXED: m_symbol
+ 859       double point = m_symbol.Point();     // FIXED: m_symbol
+ 860       double bid = m_symbol.Bid();         // FIXED: m_symbol
+ 861       double ask = m_symbol.Ask();         // FIXED: m_symbol
+ 862 
+ 863       // FIXED: Find symbol config for correct pip value
+ 864       int symIdx = -1;
+ 865       for(int j = 0; j < g_symbolCount; j++)
+ 866       {
+ 867          if(g_symbols[j].name == symbol)
+ 868          {
+ 869             symIdx = j;
+ 870             break;
+ 871          }
+ 872       }
+ 873 
+ 874       // FIXED: Calculate pip correctly
+ 875       double pip;
+ 876       if(symIdx >= 0 && g_symbols[symIdx].isValid)
+ 877          pip = g_symbols[symIdx].pip;
+ 878       else
+ 879          pip = GetPipValue(symbol, digits);
+ 880 
+ 881       if(pip <= 0) pip = point * 10; // Fallback
+ 882 
+ 883       double openPrice = posInfo.PriceOpen();
+ 884       double currentSL = posInfo.StopLoss();
+ 885       double currentTP = posInfo.TakeProfit();
+ 886 
+ 887       ENUM_POSITION_TYPE posType = posInfo.PositionType();
+ 888 
+ 889       // Calculate current profit in pips
+ 890       double currentPrice = (posType == POSITION_TYPE_BUY) ? bid : ask;
+ 891       double profitPips;
+ 892 
+ 893       if(posType == POSITION_TYPE_BUY)
  903          profitPips = (currentPrice - openPrice) / pip;
  894       else
  895          profitPips = (openPrice - currentPrice) / pip;
