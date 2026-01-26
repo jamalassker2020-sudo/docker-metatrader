@@ -1,7 +1,7 @@
-# Step 1: Use the official slim Ubuntu to save massive space
+# Step 1: Use official Ubuntu
 FROM ubuntu:22.04
 
-# Step 2: Set non-interactive and environment
+# Step 2: Set environment to be completely non-interactive
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:1 \
     HOME=/root \
@@ -9,8 +9,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 USER root
 
-# Step 3: Install Wine + Minimal Desktop (Openbox) + VNC in one layer
+# Step 3: Install system essentials + VNC tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    sudo \
+    gnupg \
+    software-properties-common \
     wine64 \
     xvfb \
     x11vnc \
@@ -22,17 +25,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Step 4: Install MT5 and clean up immediately
+# Step 4: Setup Wine and MT5
+# We use 'yes' to auto-confirm any prompts from the script
+COPY hft.mq5 /tmp/hft.mq5
 RUN wget https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5ubuntu.sh && \
     chmod +x mt5ubuntu.sh && \
-    ./mt5ubuntu.sh && \
+    yes "" | ./mt5ubuntu.sh && \
     rm mt5ubuntu.sh
 
-# Step 5: Add your HFT strategy
-COPY hft.mq5 /tmp/hft.mq5
+# Step 5: Organize the EA
 RUN mkdir -p "/root/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts" && \
-    cp /tmp/hft.mq5 "/root/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/" && \
-    rm /tmp/hft.mq5
+    mv /tmp/hft.mq5 "/root/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/"
 
 # Step 6: Create the Startup Script
 RUN echo '#!/bin/bash\n\
