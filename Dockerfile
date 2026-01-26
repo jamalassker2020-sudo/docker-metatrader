@@ -31,7 +31,7 @@ RUN dpkg --add-architecture i386 && \
 # ===============================
 # PRE-INSTALL WINE COMPONENTS
 # ===============================
-RUN winetricks -q corefonts vcrun2019 dotnet48 gecko mono
+RUN winetricks -q vcrun2019 dotnet48 gecko mono
 
 # ===============================
 # MT5
