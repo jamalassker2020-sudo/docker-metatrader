@@ -1,43 +1,46 @@
-# Base image
-FROM accetto/ubuntu-vnc-xfce-g3:latest
-
-# Environment (Railway-safe)
-ENV DISPLAY=:1 \
-    VNC_COL_DEPTH=24 \
-    VNC_RESOLUTION=1280x720 \
-    STARTUP_WAIT=1 \
-    ENABLE_SUDO=0 \
-    ENABLE_USER=0 \
-    ACCETTO_DISABLE_USER_GENERATION=1 \
-    PATH="/usr/lib/wine:/usr/bin:$PATH"
+# Step 1: Use a much smaller Wine base image
+FROM suchy/wine:latest
 
 USER root
 
-# 1. Install dependencies & clean up in ONE step to save space
-RUN dpkg --add-architecture i386 && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    wine64 \
-    wine32 \
+# Step 2: Set environment variables
+ENV DISPLAY=:1 \
+    VNC_PASSWORD=headless \
+    SCREEN_RESOLUTION=1280x720 \
+    ACCETTO_DISABLE_USER_GENERATION=1
+
+# Step 3: Install only essential tools and cleanup
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb \
+    x11vnc \
+    novnc \
+    websockify \
     wget \
-    curl \
     ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 2. Install MT5 and delete the installer immediately
+# Step 4: Install MT5 and cleanup installer
 RUN wget https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5ubuntu.sh && \
     chmod +x mt5ubuntu.sh && \
     ./mt5ubuntu.sh && \
     rm mt5ubuntu.sh
 
-# 3. Setup EA and fix permissions
+# Step 5: Setup EA
 COPY hft.mq5 /tmp/hft.mq5
-RUN mkdir -p "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts" && \
-    cp /tmp/hft.mq5 "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/" && \
-    rm /tmp/hft.mq5 && \
-    chown -R 1001:0 /home/headless
+RUN mkdir -p "/root/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts" && \
+    cp /tmp/hft.mq5 "/root/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/" && \
+    rm /tmp/hft.mq5
 
-USER 1001
+# Step 6: Create a startup script to handle VNC and MT5
+RUN echo '#!/bin/bash\n\
+Xvfb :1 -screen 0 ${SCREEN_RESOLUTION}x24 &\n\
+sleep 2\n\
+x11vnc -display :1 -nopw -forever -bg &\n\
+/usr/share/novnc/utils/launch.sh --vnc localhost:5900 --listen 6901 &\n\
+wine64 "/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe" /portable' > /start.sh && \
+    chmod +x /start.sh
 
-# 4. Corrected Startup Command
-CMD ["/dockerstartup/startup.sh", "--wait", "/usr/bin/wine64", "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe", "/portable"]
+EXPOSE 6901
+
+CMD ["/start.sh"]
