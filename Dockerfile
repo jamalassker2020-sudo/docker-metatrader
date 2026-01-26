@@ -8,36 +8,36 @@ ENV DISPLAY=:1 \
     STARTUP_WAIT=1 \
     ENABLE_SUDO=0 \
     ENABLE_USER=0 \
-    ACCETTO_DISABLE_USER_GENERATION=1
+    ACCETTO_DISABLE_USER_GENERATION=1 \
+    PATH="/usr/lib/wine:/usr/bin:$PATH"
 
-# 🟢 Switch to root temporarily to fix the "Permission Denied" error
 USER root
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
+# 1. Install dependencies + add 32-bit architecture (Wine needs both often)
+RUN dpkg --add-architecture i386 && \
+    apt-get update && apt-get install -y \
     wine64 \
+    wine32 \
     wget \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Expert Advisor
+# 2. Copy Expert Advisor
 COPY hft.mq5 /tmp/hft.mq5
 
-# Install MetaTrader 5
+# 3. Install MetaTrader 5
 RUN wget https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5ubuntu.sh \
     && chmod +x mt5ubuntu.sh \
     && ./mt5ubuntu.sh
 
-# Move EA to MT5 Experts folder
+# 4. Move EA to MT5 Experts folder
 RUN mkdir -p "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts" && \
     cp /tmp/hft.mq5 "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/"
 
-# Fix folder ownership before leaving root
+# 5. Fix permissions
 RUN chown -R 1001:0 /home/headless
-
-# 🟢 Switch back to the default headless user (G3 images use 1001)
 USER 1001
 
-# Start with correct G3 startup script
-CMD ["/dockerstartup/startup.sh", "--wait", "wine64", "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe", "/portable"]
+# 6. Start using the FULL PATH to wine64 to avoid "command not found"
+CMD ["/dockerstartup/startup.sh", "--wait", "/usr/bin/wine64", "/home/headless/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe", "/portable"]
