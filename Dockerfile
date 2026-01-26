@@ -1,100 +1,82 @@
-# =========================
-# BASE IMAGE
-# =========================
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:1 \
-    HOME=/root \
-    SCREEN_RESOLUTION=1280x720 \
     WINEDEBUG=-all \
+    WINEARCH=win64 \
     WINEPREFIX=/root/.wine \
-    WINEARCH=win64
+    SCREEN_RESOLUTION=1280x720
 
-USER root
-
-# =========================
-# INSTALL DEPENDENCIES
-# =========================
+# ===============================
+# SYSTEM + WINE
+# ===============================
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-    wine \
     wine64 \
     wine32 \
+    winetricks \
     xvfb \
-    x11-utils \
     x11vnc \
     novnc \
     websockify \
     openbox \
-    python3-xdg \
     wget \
     unzip \
-    ca-certificates && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    cabextract \
+    fonts-wine && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# =========================
-# DOWNLOAD MT5 + EA
-# =========================
-RUN wget https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
+# ===============================
+# PRE-INSTALL WINE COMPONENTS
+# ===============================
+RUN winetricks -q corefonts vcrun2019 dotnet48 gecko mono
+
+# ===============================
+# MT5
+# ===============================
+WORKDIR /root
+RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
+
 COPY hft.mq5 /root/hft.mq5
 
-# =========================
-# STARTUP SCRIPT
-# =========================
-RUN cat << 'EOF' > /start.sh
-#!/bin/bash
-set -e
+# ===============================
+# START SCRIPT
+# ===============================
+RUN printf '#!/bin/bash\n\
+set -e\n\
+echo \"=== START X ===\"\n\
+rm -f /tmp/.X1-lock\n\
+Xvfb :1 -screen 0 ${SCREEN_RESOLUTION}x24 &\n\
+sleep 2\n\
+openbox-session &\n\
+\n\
+echo \"=== VNC ===\"\n\
+x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
+\n\
+echo \"=== NOVNC ON RAILWAY PORT ===\"\n\
+/usr/share/novnc/utils/launch.sh --vnc localhost:5900 --listen ${PORT} &\n\
+\n\
+echo \"=== WINE INIT ===\"\n\
+wineboot --init\n\
+sleep 10\n\
+\n\
+MT5=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
+\n\
+if [ ! -f \"$MT5/terminal64.exe\" ]; then\n\
+  echo \"=== INSTALL MT5 ===\"\n\
+  wine /root/mt5setup.exe /auto\n\
+  sleep 20\n\
+fi\n\
+\n\
+mkdir -p \"$MT5/MQL5/Experts\"\n\
+cp /root/hft.mq5 \"$MT5/MQL5/Experts/\"\n\
+\n\
+echo \"=== START MT5 ===\"\n\
+wine \"$MT5/terminal64.exe\" /portable\n\
+\n\
+tail -f /dev/null\n' > /start.sh && chmod +x /start.sh
 
-echo "=== CLEANUP X LOCKS ==="
-rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
-
-echo "=== START XVFB ==="
-Xvfb :1 -screen 0 1280x720x24 &
-sleep 3
-
-echo "=== START OPENBOX ==="
-openbox-session &
-sleep 2
-
-echo "=== START VNC + NOVNC ==="
-x11vnc -display :1 -nopw -listen localhost -forever -bg
-/usr/share/novnc/utils/launch.sh --vnc localhost:5900 --listen 6901 &
-
-echo "=== INIT WINE ==="
-if [ ! -d "/root/.wine" ]; then
-  wineboot --init
-  sleep 10
-fi
-
-MT5_PATH="/root/.wine/drive_c/Program Files/MetaTrader 5"
-
-echo "=== INSTALL MT5 IF NEEDED ==="
-if [ ! -f "$MT5_PATH/terminal64.exe" ]; then
-  wine /root/mt5setup.exe /portable /auto
-  for i in {1..60}; do
-    [ -f "$MT5_PATH/terminal64.exe" ] && break
-    sleep 2
-  done
-fi
-
-echo "=== COPY EA ==="
-mkdir -p "$MT5_PATH/MQL5/Experts"
-cp /root/hft.mq5 "$MT5_PATH/MQL5/Experts/"
-
-echo "=== START MT5 ==="
-wine "$MT5_PATH/terminal64.exe" /portable
-
-sleep infinity
-EOF
-
-RUN chmod +x /start.sh
-
-# =========================
-# EXPOSE NOVNC
-# =========================
-EXPOSE 6901
-
+EXPOSE 8080
 CMD ["/bin/bash", "/start.sh"]
