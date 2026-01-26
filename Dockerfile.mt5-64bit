@@ -41,6 +41,8 @@ RUN groupadd -g 1000 wine \
 
 # Run MetaTrader as non privileged user.
 USER wine
+COPY ./hft.mq5 "/root/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Experts/"
+
 
 # Autorun MetaTrader Terminal.
 ENTRYPOINT [ "wine" ]
