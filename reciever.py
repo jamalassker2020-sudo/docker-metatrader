@@ -1,24 +1,4 @@
-"""
-MT5 Webhook Receiver for HFT Ultra FX 2026
-==========================================
-Receives FOREX trading signals via HTTP webhook and executes trades on MetaTrader 5
 
-SUPPORTED PAIRS (28 Total):
-- Major Pairs: EUR/USD, GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD, NZD/USD
-- Euro Crosses: EUR/GBP, EUR/JPY, EUR/CHF, EUR/AUD, EUR/CAD, EUR/NZD
-- GBP Crosses: GBP/JPY, GBP/CHF, GBP/AUD, GBP/CAD, GBP/NZD
-- Other Crosses: AUD/JPY, AUD/NZD, AUD/CAD, AUD/CHF, NZD/JPY, NZD/CAD, NZD/CHF, CAD/JPY, CAD/CHF
-- Metals: XAU/USD
-
-SETUP:
-1. Install dependencies: pip install flask flask-cors metatrader5 pytz
-2. Update credentials below
-3. Run: python mt5_webhook_receiver.py
-4. Configure webhook URL in HFT Ultra FX: http://YOUR_VPS_IP:5000/webhook
-
-Author: HFT Ultra FX 2026
-Version: 1.0
-"""
 
 from mt5linux import MetaTrader5
 mt5 = MetaTrader5()
