@@ -29,6 +29,7 @@ import logging
 from datetime import datetime
 import threading
 import time
+from flask import send_from_directory
 
 # ============================================
 # CONFIGURATION - UPDATE THESE VALUES
@@ -138,6 +139,15 @@ mt5_connected = False
 # MT5 CONNECTION
 # ============================================
 
+@app.route('/')
+def serve_desktop():
+    """Serves the MT5 Desktop UI"""
+    return send_from_directory('/usr/share/novnc', 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    """Serves required JS/CSS files for noVNC"""
+    return send_from_directory('/usr/share/novnc', path)
 def connect_mt5():
     """Initialize and connect to MetaTrader 5"""
     global mt5_connected
