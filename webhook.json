@@ -1,158 +1,172 @@
-```
+Here's the complete JSON specification with the + signs and line numbers removed:
+
+```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "HFT Ultra FX 2026 - MT5 Webhook Specification",
-  "version": "1.0",
-  "description": "JSON specification for MetaTrader 5 webhook integration with HFT Ultra FX trading signals",
-  
+  "title": "HFT Ultra FX Smart Lock 2026 - MT5 Webhook Specification",
+  "version": "2.0",
+  "description": "JSON specification for MetaTrader 5 webhook integration with HFT Ultra FX Smart Lock trading signals (28 Forex pairs)",
+
   "http_headers": {
     "Content-Type": "application/json",
-    "X-Signal-Source": "HFT-ULTRA-FX-2026",
-    "X-Signal-Action": "OPEN | CLOSE | TEST",
+    "X-Signal-Source": "HFT-ULTRA-FX-SMARTLOCK-2026",
+    "X-Signal-Action": "OPEN | CLOSE | MODIFY | TEST",
     "X-Auth-Key": "(optional) Your secret key if configured"
   },
 
   "actions": {
-    "OPEN": "Sent when a new position is opened",
-    "CLOSE": "Sent when a position is closed (TP/SL/TRAIL)",
+    "OPEN": "Sent when a new forex position is opened",
+    "CLOSE": "Sent when a position is closed (TP/SL/TRAIL/BE/LOCK/TIME/MOM_REV/RSI_REV)",
+    "MODIFY": "Sent when SL/TP is modified (trailing stop updates)",
     "TEST": "Connection test payload"
+  },
+
+  "exit_reasons": {
+    "TP": "Take Profit hit (15 pips default)",
+    "SL": "Stop Loss hit (5 pips default)",
+    "BE": "Break-Even stop triggered",
+    "TRAIL": "Trailing stop triggered",
+    "LOCK": "Profit lock protection triggered",
+    "TIME": "Max hold time exceeded (5 min)",
+    "MOM_REV": "Momentum reversal detected",
+    "RSI_REV": "RSI reversal detected"
   },
 
   "payload_schema": {
     "type": "object",
     "properties": {
-      
+
       "action": {
         "type": "string",
-        "enum": ["OPEN", "CLOSE", "TEST"],
+        "enum": ["OPEN", "CLOSE", "MODIFY", "TEST"],
         "description": "Trade action type"
       },
-      
+
       "source": {
         "type": "string",
-        "const": "HFT-ULTRA-FX-2026",
+        "const": "HFT-ULTRA-FX-SMARTLOCK-2026",
         "description": "Signal source identifier"
       },
-      
+
       "version": {
         "type": "string",
-        "const": "1.0",
+        "const": "2.0",
         "description": "Protocol version"
       },
-      
+
       "timestamp": {
         "type": "string",
         "format": "date-time",
         "description": "ISO 8601 timestamp (e.g., 2026-01-29T12:30:45.123Z)"
       },
-      
+
       "timestamp_unix": {
         "type": "integer",
         "description": "Unix timestamp in milliseconds"
       },
-      
+
       "trade_id": {
         "type": "string",
         "pattern": "^HFT-[A-Z0-9]+-[A-Z0-9]+$",
         "description": "Unique trade identifier (e.g., HFT-M1ABC2D-XY3Z)"
       },
-      
+
       "symbol": {
         "type": "string",
         "description": "Original symbol from source (e.g., EUR/USD)"
       },
-      
+
       "symbol_mt5": {
         "type": "string",
         "description": "MetaTrader 5 compatible symbol (e.g., EURUSD)"
       },
-      
+
       "direction": {
         "type": "string",
         "enum": ["BUY", "SELL"],
         "description": "Trade direction"
       },
-      
+
       "order_type": {
         "type": "integer",
         "enum": [0, 1],
         "description": "MT5 order type: 0=ORDER_TYPE_BUY, 1=ORDER_TYPE_SELL"
       },
-      
+
       "entry_price": {
         "type": "number",
         "description": "Position entry price"
       },
-      
+
       "current_price": {
         "type": "number",
         "description": "Current market price at signal time"
       },
-      
+
       "take_profit": {
         "type": "number",
         "description": "Take profit price level"
       },
-      
+
       "stop_loss": {
         "type": "number",
         "description": "Stop loss price level"
       },
-      
+
       "trailing_stop": {
         "type": ["number", "null"],
         "description": "Trailing stop price (null if not active)"
       },
-      
+
       "lot_size": {
         "type": "number",
         "minimum": 0.01,
         "description": "Position lot size"
       },
-      
+
       "pip_value": {
         "type": "number",
         "description": "Monetary value per pip"
       },
-      
+
       "pip_size": {
         "type": "number",
-        "description": "Pip size for the symbol (e.g., 0.0001 for EUR/USD, 0.01 for USD/JPY)"
+        "description": "Pip size for the symbol (0.0001 for most pairs, 0.01 for JPY pairs and XAU)"
       },
-      
+
       "signal_strength": {
         "type": "integer",
         "minimum": 0,
         "maximum": 10,
         "description": "Signal confidence (0-10 scale, higher = stronger)"
       },
-      
+
       "exit_price": {
         "type": ["number", "null"],
         "description": "Exit price (only for CLOSE action)"
       },
-      
+
       "exit_reason": {
         "type": ["string", "null"],
-        "enum": ["TP", "SL", "TRAIL", "MANUAL", null],
-        "description": "Close reason: TP=TakeProfit, SL=StopLoss, TRAIL=TrailingStop"
+        "enum": ["TP", "SL", "BE", "TRAIL", "LOCK", "TIME", "MOM_REV", "RSI_REV", "MANUAL", null],
+        "description": "Close reason code"
       },
-      
+
       "pnl_pips": {
         "type": ["number", "null"],
         "description": "Profit/loss in pips (only for CLOSE)"
       },
-      
+
       "pnl_usd": {
         "type": ["number", "null"],
         "description": "Profit/loss in USD (only for CLOSE)"
       },
-      
+
       "duration_ms": {
         "type": ["integer", "null"],
         "description": "Trade duration in milliseconds (only for CLOSE)"
       },
-      
+
       "account": {
         "type": "object",
         "properties": {
@@ -163,6 +177,10 @@
           "equity": {
             "type": "number",
             "description": "Account equity (balance + unrealized P&L)"
+          },
+          "locked_profit": {
+            "type": "number",
+            "description": "Locked profit amount (profit protection)"
           },
           "open_positions": {
             "type": "integer",
@@ -178,7 +196,7 @@
           }
         }
       },
-      
+
       "auth": {
         "type": ["object", "null"],
         "properties": {
@@ -197,11 +215,11 @@
   },
 
   "example_payloads": {
-    
+
     "OPEN_example": {
       "action": "OPEN",
-      "source": "HFT-ULTRA-FX-2026",
-      "version": "1.0",
+      "source": "HFT-ULTRA-FX-SMARTLOCK-2026",
+      "version": "2.0",
       "timestamp": "2026-01-29T14:30:45.123Z",
       "timestamp_unix": 1769779845123,
       "trade_id": "HFT-M1ABC2D-XY3Z",
@@ -209,10 +227,10 @@
       "symbol_mt5": "EURUSD",
       "direction": "BUY",
       "order_type": 0,
-      "entry_price": 1.08520,
-      "current_price": 1.08520,
-      "take_profit": 1.08670,
-      "stop_loss": 1.08470,
+      "entry_price": 1.08534,
+      "current_price": 1.08534,
+      "take_profit": 1.08684,
+      "stop_loss": 1.08484,
       "trailing_stop": null,
       "lot_size": 0.01,
       "pip_value": 1.0,
@@ -226,6 +244,7 @@
       "account": {
         "balance": 102.45,
         "equity": 103.12,
+        "locked_profit": 2.50,
         "open_positions": 2,
         "total_trades": 47,
         "win_rate": "61.70"
@@ -235,11 +254,11 @@
         "signature": "eW91ci1zZWNyZXQta2V5OjE3Njk3Nzk4NDUxMjM="
       }
     },
-    
-    "CLOSE_example": {
+
+    "CLOSE_TP_example": {
       "action": "CLOSE",
-      "source": "HFT-ULTRA-FX-2026",
-      "version": "1.0",
+      "source": "HFT-ULTRA-FX-SMARTLOCK-2026",
+      "version": "2.0",
       "timestamp": "2026-01-29T14:35:12.456Z",
       "timestamp_unix": 1769780112456,
       "trade_id": "HFT-M1ABC2D-XY3Z",
@@ -247,16 +266,16 @@
       "symbol_mt5": "EURUSD",
       "direction": "BUY",
       "order_type": 0,
-      "entry_price": 1.08520,
-      "current_price": 1.08670,
-      "take_profit": 1.08670,
-      "stop_loss": 1.08470,
+      "entry_price": 1.08534,
+      "current_price": 1.08684,
+      "take_profit": 1.08684,
+      "stop_loss": 1.08484,
       "trailing_stop": null,
       "lot_size": 0.01,
       "pip_value": 1.0,
       "pip_size": 0.0001,
       "signal_strength": 5,
-      "exit_price": 1.08670,
+      "exit_price": 1.08684,
       "exit_reason": "TP",
       "pnl_pips": 15.0,
       "pnl_usd": 15.0,
@@ -264,99 +283,215 @@
       "account": {
         "balance": 117.45,
         "equity": 117.45,
+        "locked_profit": 5.00,
         "open_positions": 1,
         "total_trades": 48,
         "win_rate": "62.50"
       },
       "auth": null
     },
-    
+
+    "CLOSE_TRAIL_example": {
+      "action": "CLOSE",
+      "source": "HFT-ULTRA-FX-SMARTLOCK-2026",
+      "version": "2.0",
+      "timestamp": "2026-01-29T14:38:00.000Z",
+      "timestamp_unix": 1769780280000,
+      "trade_id": "HFT-N2DEF3G-AB4C",
+      "symbol": "GBP/JPY",
+      "symbol_mt5": "GBPJPY",
+      "direction": "SELL",
+      "order_type": 1,
+      "entry_price": 188.456,
+      "current_price": 188.356,
+      "take_profit": 188.306,
+      "stop_loss": 188.376,
+      "trailing_stop": 188.376,
+      "lot_size": 0.01,
+      "pip_value": 0.67,
+      "pip_size": 0.01,
+      "signal_strength": 4,
+      "exit_price": 188.376,
+      "exit_reason": "TRAIL",
+      "pnl_pips": 8.0,
+      "pnl_usd": 5.36,
+      "duration_ms": 180000,
+      "account": {
+        "balance": 122.81,
+        "equity": 122.81,
+        "locked_profit": 6.50,
+        "open_positions": 0,
+        "total_trades": 49,
+        "win_rate": "63.27"
+      },
+      "auth": null
+    },
+
+    "CLOSE_BE_example": {
+      "action": "CLOSE",
+      "source": "HFT-ULTRA-FX-SMARTLOCK-2026",
+      "version": "2.0",
+      "timestamp": "2026-01-29T14:40:00.000Z",
+      "timestamp_unix": 1769780400000,
+      "trade_id": "HFT-P3GHI4J-CD5E",
+      "symbol": "XAU/USD",
+      "symbol_mt5": "XAUUSD",
+      "direction": "BUY",
+      "order_type": 0,
+      "entry_price": 2650.50,
+      "current_price": 2650.55,
+      "take_profit": 2665.50,
+      "stop_loss": 2650.55,
+      "trailing_stop": null,
+      "lot_size": 0.01,
+      "pip_value": 1.0,
+      "pip_size": 0.01,
+      "signal_strength": 5,
+      "exit_price": 2650.55,
+      "exit_reason": "BE",
+      "pnl_pips": 0.5,
+      "pnl_usd": 0.50,
+      "duration_ms": 120000,
+      "account": {
+        "balance": 123.31,
+        "equity": 123.31,
+        "locked_profit": 6.50,
+        "open_positions": 0,
+        "total_trades": 50,
+        "win_rate": "64.00"
+      },
+      "auth": null
+    },
+
+    "CLOSE_LOCK_example": {
+      "action": "CLOSE",
+      "source": "HFT-ULTRA-FX-SMARTLOCK-2026",
+      "version": "2.0",
+      "timestamp": "2026-01-29T15:00:00.000Z",
+      "timestamp_unix": 1769781600000,
+      "trade_id": "HFT-Q4JKL5M-EF6G",
+      "symbol": "USD/JPY",
+      "symbol_mt5": "USDJPY",
+      "direction": "SELL",
+      "order_type": 1,
+      "entry_price": 149.234,
+      "current_price": 149.184,
+      "take_profit": 149.084,
+      "stop_loss": 149.284,
+      "trailing_stop": null,
+      "lot_size": 0.01,
+      "pip_value": 0.67,
+      "pip_size": 0.01,
+      "signal_strength": 4,
+      "exit_price": 149.184,
+      "exit_reason": "LOCK",
+      "pnl_pips": 5.0,
+      "pnl_usd": 3.35,
+      "duration_ms": 90000,
+      "account": {
+        "balance": 126.66,
+        "equity": 126.66,
+        "locked_profit": 8.00,
+        "open_positions": 0,
+        "total_trades": 51,
+        "win_rate": "64.71"
+      },
+      "auth": null
+    },
+
     "TEST_example": {
       "action": "TEST",
-      "source": "HFT-ULTRA-FX-2026",
-      "version": "1.0",
+      "source": "HFT-ULTRA-FX-SMARTLOCK-2026",
+      "version": "2.0",
       "timestamp": "2026-01-29T14:00:00.000Z",
       "timestamp_unix": 1769778000000,
-      "message": "Connection test from HFT Ultra FX 2026"
+      "message": "Connection test from HFT Ultra FX Smart Lock 2026"
     }
   },
 
   "mt5_symbol_mapping": {
-    "major_pairs": {
-      "EUR/USD": "EURUSD",
-      "GBP/USD": "GBPUSD",
-      "USD/JPY": "USDJPY",
-      "USD/CHF": "USDCHF",
-      "AUD/USD": "AUDUSD",
-      "USD/CAD": "USDCAD",
-      "NZD/USD": "NZDUSD"
-    },
-    "euro_crosses": {
-      "EUR/GBP": "EURGBP",
-      "EUR/JPY": "EURJPY",
-      "EUR/CHF": "EURCHF",
-      "EUR/AUD": "EURAUD",
-      "EUR/CAD": "EURCAD",
-      "EUR/NZD": "EURNZD"
-    },
-    "gbp_crosses": {
-      "GBP/JPY": "GBPJPY",
-      "GBP/CHF": "GBPCHF",
-      "GBP/AUD": "GBPAUD",
-      "GBP/CAD": "GBPCAD",
-      "GBP/NZD": "GBPNZD"
-    },
-    "other_crosses": {
-      "AUD/JPY": "AUDJPY",
-      "AUD/NZD": "AUDNZD",
-      "AUD/CAD": "AUDCAD",
-      "AUD/CHF": "AUDCHF",
-      "NZD/JPY": "NZDJPY",
-      "NZD/CAD": "NZDCAD",
-      "NZD/CHF": "NZDCHF",
-      "CAD/JPY": "CADJPY",
-      "CAD/CHF": "CADCHF"
-    },
-    "metals": {
-      "XAU/USD": "XAUUSD"
-    }
+    "EUR/USD": "EURUSD",
+    "GBP/USD": "GBPUSD",
+    "USD/JPY": "USDJPY",
+    "USD/CHF": "USDCHF",
+    "AUD/USD": "AUDUSD",
+    "USD/CAD": "USDCAD",
+    "NZD/USD": "NZDUSD",
+    "EUR/GBP": "EURGBP",
+    "EUR/JPY": "EURJPY",
+    "EUR/CHF": "EURCHF",
+    "EUR/AUD": "EURAUD",
+    "EUR/CAD": "EURCAD",
+    "EUR/NZD": "EURNZD",
+    "GBP/JPY": "GBPJPY",
+    "GBP/CHF": "GBPCHF",
+    "GBP/AUD": "GBPAUD",
+    "GBP/CAD": "GBPCAD",
+    "GBP/NZD": "GBPNZD",
+    "AUD/JPY": "AUDJPY",
+    "AUD/NZD": "AUDNZD",
+    "AUD/CAD": "AUDCAD",
+    "AUD/CHF": "AUDCHF",
+    "NZD/JPY": "NZDJPY",
+    "NZD/CAD": "NZDCAD",
+    "NZD/CHF": "NZDCHF",
+    "CAD/JPY": "CADJPY",
+    "CAD/CHF": "CADCHF",
+    "XAU/USD": "XAUUSD"
   },
 
   "pip_sizes": {
-    "standard": {
-      "description": "Most currency pairs use 0.0001 (4 decimal places)",
-      "value": 0.0001,
-      "pairs": ["EURUSD", "GBPUSD", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURCHF", "EURAUD", "EURCAD", "EURNZD", "GBPCHF", "GBPAUD", "GBPCAD", "GBPNZD", "AUDNZD", "AUDCAD", "AUDCHF", "NZDCAD", "NZDCHF", "CADCHF"]
+    "USDJPY": 0.01,
+    "EURJPY": 0.01,
+    "GBPJPY": 0.01,
+    "AUDJPY": 0.01,
+    "NZDJPY": 0.01,
+    "CADJPY": 0.01,
+    "XAUUSD": 0.01,
+    "default": 0.0001
+  },
+
+  "smart_lock_settings": {
+    "description": "Smart Profit Lock configuration used by HFT Ultra FX 2026",
+    "take_profit_pips": 15,
+    "stop_loss_pips": 5,
+    "break_even_trigger_pips": 3,
+    "break_even_plus_pips": 0.5,
+    "trail_levels": {
+      "level_1": {"trigger_pips": 5, "distance_pips": 2},
+      "level_2": {"trigger_pips": 8, "distance_pips": 1.5},
+      "level_3": {"trigger_pips": 12, "distance_pips": 1}
     },
-    "jpy_pairs": {
-      "description": "JPY pairs use 0.01 (2 decimal places)",
-      "value": 0.01,
-      "pairs": ["USDJPY", "EURJPY", "GBPJPY", "AUDJPY", "NZDJPY", "CADJPY"]
+    "partial_close": {
+      "trigger_pips": 6,
+      "percentage": 50
     },
-    "gold": {
-      "description": "XAU/USD uses 0.01",
-      "value": 0.01,
-      "pairs": ["XAUUSD"]
-    }
+    "profit_lock_percentage": 50,
+    "daily_target_percentage": 3,
+    "daily_loss_limit_percentage": 2,
+    "max_hold_time_ms": 300000,
+    "max_positions": 6
   },
 
   "mt5_ea_requirements": {
-    "description": "Requirements for your MT5 Expert Advisor to receive these webhooks",
+    "description": "Requirements for your MT5 webhook receiver",
     "requirements": [
-      "HTTP server listening on a port (e.g., localhost:5000)",
+      "HTTP server listening on configured port (default: 8080)",
       "Accept POST requests with Content-Type: application/json",
       "Parse JSON payload and extract required fields",
       "Map symbol_mt5 to your broker's symbol naming convention",
       "Handle order_type: 0=BUY, 1=SELL for OrderSend()",
+      "Handle exit_reason for proper trade logging",
       "Implement authentication validation if using secret key",
       "Return HTTP 200 on success, 4xx/5xx on errors"
     ],
-    "recommended_libraries": {
-      "mql5": "Use WebRequest() for outbound or custom DLL for inbound HTTP",
-      "python_bridge": "Flask/FastAPI server that communicates with MT5 via MetaTrader5 Python package",
-      "node_bridge": "Express.js server with node-mt5-api or similar"
+    "magic_number": 202602,
+    "comment_prefix": "HFTFX:",
+    "recommended_setup": {
+      "python_bridge": "Flask server with MetaTrader5 Python package (included in mt5_webhook_receiver.py)",
+      "railway_deployment": "Set PORT environment variable, deploy Python app"
     },
-    "cors_note": "If running from browser, your MT5 webhook server must allow CORS (Access-Control-Allow-Origin header)"
+    "cors_note": "CORS is enabled for all origins in the provided receiver"
   }
 }
 ```
