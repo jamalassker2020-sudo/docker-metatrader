@@ -1,340 +1,362 @@
+```
 {
-   "$schema": "http://json-schema.org/draft-07/schema#",
-   "title": "HFT Ultra 2026 - MT5 Webhook Specification",
-   "version": "1.0",
-   "description": "JSON specification for MetaTrader 5 webhook integration with HFT Ultra trading signals",
-   
-   "http_headers": {
-     "Content-Type": "application/json",
-     "X-Signal-Source": "HFT-ULTRA-2026",
-     "X-Signal-Action": "OPEN | CLOSE | TEST",
-     "X-Auth-Key": "(optional) Your secret key if configured"
-   },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HFT Ultra FX 2026 - MT5 Webhook Specification",
+  "version": "1.0",
+  "description": "JSON specification for MetaTrader 5 webhook integration with HFT Ultra FX trading signals",
+  
+  "http_headers": {
+    "Content-Type": "application/json",
+    "X-Signal-Source": "HFT-ULTRA-FX-2026",
+    "X-Signal-Action": "OPEN | CLOSE | TEST",
+    "X-Auth-Key": "(optional) Your secret key if configured"
+  },
 
-   "actions": {
-     "OPEN": "Sent when a new position is opened",
-     "CLOSE": "Sent when a position is closed (TP/SL/TRAIL)",
-     "TEST": "Connection test payload"
-   },
+  "actions": {
+    "OPEN": "Sent when a new position is opened",
+    "CLOSE": "Sent when a position is closed (TP/SL/TRAIL)",
+    "TEST": "Connection test payload"
+  },
 
-   "payload_schema": {
-     "type": "object",
-     "properties": {
-       
-       "action": {
-         "type": "string",
-         "enum": ["OPEN", "CLOSE", "TEST"],
-         "description": "Trade action type"
-       },
-       
-       "source": {
-         "type": "string",
-         "const": "HFT-ULTRA-2026",
-         "description": "Signal source identifier"
-       },
-       
-       "version": {
-         "type": "string",
-         "const": "1.0",
-         "description": "Protocol version"
-       },
-       
-       "timestamp": {
-         "type": "string",
-         "format": "date-time",
-         "description": "ISO 8601 timestamp (e.g., 2026-01-29T12:30:45.123Z)"
-       },
-       
-       "timestamp_unix": {
-         "type": "integer",
-         "description": "Unix timestamp in milliseconds"
-       },
-       
-       "trade_id": {
-         "type": "string",
-         "pattern": "^HFT-[A-Z0-9]+-[A-Z0-9]+$",
-         "description": "Unique trade identifier (e.g., HFT-M1ABC2D-XY3Z)"
-       },
-       
-       "symbol": {
-         "type": "string",
-         "description": "Original symbol from source (e.g., BTC/USDT)"
-       },
-       
-       "symbol_mt5": {
-         "type": "string",
-         "description": "MetaTrader 5 compatible symbol (e.g., BTCUSD)"
-       },
-       
-       "symbol_binance": {
-         "type": "string",
-         "description": "Binance API symbol (e.g., BTCUSDT)"
-       },
-       
-       "direction": {
-         "type": "string",
-         "enum": ["BUY", "SELL"],
-         "description": "Trade direction"
-       },
-       
-       "order_type": {
-         "type": "integer",
-         "enum": [0, 1],
-         "description": "MT5 order type: 0=ORDER_TYPE_BUY, 1=ORDER_TYPE_SELL"
-       },
-       
-       "entry_price": {
-         "type": "number",
-         "description": "Position entry price"
-       },
-       
-       "current_price": {
-         "type": "number",
-         "description": "Current market price at signal time"
-       },
-       
-       "take_profit": {
-         "type": "number",
-         "description": "Take profit price level"
-       },
-       
-       "stop_loss": {
-         "type": "number",
-         "description": "Stop loss price level"
-       },
-       
-       "trailing_stop": {
-         "type": ["number", "null"],
-         "description": "Trailing stop price (null if not active)"
-       },
-       
-       "lot_size": {
-         "type": "number",
-         "minimum": 0.01,
-         "description": "Position lot size"
-       },
-       
-       "pip_value": {
-         "type": "number",
-         "description": "Monetary value per pip"
-       },
-       
-       "pip_size": {
-         "type": "number",
-         "description": "Pip size for the symbol (e.g., 0.01 for BTC)"
-       },
-       
-       "signal_strength": {
-         "type": "integer",
-         "minimum": 0,
-         "maximum": 10,
-         "description": "Signal confidence (0-10 scale, higher = stronger)"
-       },
-       
-       "exit_price": {
-         "type": ["number", "null"],
-         "description": "Exit price (only for CLOSE action)"
-       },
-       
-       "exit_reason": {
-         "type": ["string", "null"],
-         "enum": ["TP", "SL", "TRAIL", "MANUAL", null],
-         "description": "Close reason: TP=TakeProfit, SL=StopLoss, TRAIL=TrailingStop"
-       },
-       
-       "pnl_pips": {
-         "type": ["number", "null"],
-         "description": "Profit/loss in pips (only for CLOSE)"
-       },
-       
-       "pnl_usd": {
-         "type": ["number", "null"],
-         "description": "Profit/loss in USD (only for CLOSE)"
-       },
-       
-       "duration_ms": {
-         "type": ["integer", "null"],
-         "description": "Trade duration in milliseconds (only for CLOSE)"
-       },
-       
-       "account": {
-         "type": "object",
-         "properties": {
-           "balance": {
-             "type": "number",
-             "description": "Account balance"
-           },
-           "equity": {
-             "type": "number",
-             "description": "Account equity (balance + unrealized P&L)"
-           },
-           "open_positions": {
-             "type": "integer",
-             "description": "Number of currently open positions"
-           },
-           "total_trades": {
-             "type": "integer",
-             "description": "Total trades executed"
-           },
-           "win_rate": {
-             "type": ["number", "string"],
-             "description": "Win rate percentage"
-           }
-         }
-       },
-       
-       "auth": {
-         "type": ["object", "null"],
-         "properties": {
-           "secret": {
-             "type": "string",
-             "description": "Secret key for authentication"
-           },
-           "signature": {
-             "type": "string",
-             "description": "Base64 encoded signature (secret:timestamp)"
-           }
-         },
-         "description": "Authentication object (null if no secret configured)"
-       }
-     }
-   },
+  "payload_schema": {
+    "type": "object",
+    "properties": {
+      
+      "action": {
+        "type": "string",
+        "enum": ["OPEN", "CLOSE", "TEST"],
+        "description": "Trade action type"
+      },
+      
+      "source": {
+        "type": "string",
+        "const": "HFT-ULTRA-FX-2026",
+        "description": "Signal source identifier"
+      },
+      
+      "version": {
+        "type": "string",
+        "const": "1.0",
+        "description": "Protocol version"
+      },
+      
+      "timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "description": "ISO 8601 timestamp (e.g., 2026-01-29T12:30:45.123Z)"
+      },
+      
+      "timestamp_unix": {
+        "type": "integer",
+        "description": "Unix timestamp in milliseconds"
+      },
+      
+      "trade_id": {
+        "type": "string",
+        "pattern": "^HFT-[A-Z0-9]+-[A-Z0-9]+$",
+        "description": "Unique trade identifier (e.g., HFT-M1ABC2D-XY3Z)"
+      },
+      
+      "symbol": {
+        "type": "string",
+        "description": "Original symbol from source (e.g., EUR/USD)"
+      },
+      
+      "symbol_mt5": {
+        "type": "string",
+        "description": "MetaTrader 5 compatible symbol (e.g., EURUSD)"
+      },
+      
+      "direction": {
+        "type": "string",
+        "enum": ["BUY", "SELL"],
+        "description": "Trade direction"
+      },
+      
+      "order_type": {
+        "type": "integer",
+        "enum": [0, 1],
+        "description": "MT5 order type: 0=ORDER_TYPE_BUY, 1=ORDER_TYPE_SELL"
+      },
+      
+      "entry_price": {
+        "type": "number",
+        "description": "Position entry price"
+      },
+      
+      "current_price": {
+        "type": "number",
+        "description": "Current market price at signal time"
+      },
+      
+      "take_profit": {
+        "type": "number",
+        "description": "Take profit price level"
+      },
+      
+      "stop_loss": {
+        "type": "number",
+        "description": "Stop loss price level"
+      },
+      
+      "trailing_stop": {
+        "type": ["number", "null"],
+        "description": "Trailing stop price (null if not active)"
+      },
+      
+      "lot_size": {
+        "type": "number",
+        "minimum": 0.01,
+        "description": "Position lot size"
+      },
+      
+      "pip_value": {
+        "type": "number",
+        "description": "Monetary value per pip"
+      },
+      
+      "pip_size": {
+        "type": "number",
+        "description": "Pip size for the symbol (e.g., 0.0001 for EUR/USD, 0.01 for USD/JPY)"
+      },
+      
+      "signal_strength": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10,
+        "description": "Signal confidence (0-10 scale, higher = stronger)"
+      },
+      
+      "exit_price": {
+        "type": ["number", "null"],
+        "description": "Exit price (only for CLOSE action)"
+      },
+      
+      "exit_reason": {
+        "type": ["string", "null"],
+        "enum": ["TP", "SL", "TRAIL", "MANUAL", null],
+        "description": "Close reason: TP=TakeProfit, SL=StopLoss, TRAIL=TrailingStop"
+      },
+      
+      "pnl_pips": {
+        "type": ["number", "null"],
+        "description": "Profit/loss in pips (only for CLOSE)"
+      },
+      
+      "pnl_usd": {
+        "type": ["number", "null"],
+        "description": "Profit/loss in USD (only for CLOSE)"
+      },
+      
+      "duration_ms": {
+        "type": ["integer", "null"],
+        "description": "Trade duration in milliseconds (only for CLOSE)"
+      },
+      
+      "account": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "number",
+            "description": "Account balance"
+          },
+          "equity": {
+            "type": "number",
+            "description": "Account equity (balance + unrealized P&L)"
+          },
+          "open_positions": {
+            "type": "integer",
+            "description": "Number of currently open positions"
+          },
+          "total_trades": {
+            "type": "integer",
+            "description": "Total trades executed"
+          },
+          "win_rate": {
+            "type": ["number", "string"],
+            "description": "Win rate percentage"
+          }
+        }
+      },
+      
+      "auth": {
+        "type": ["object", "null"],
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "Secret key for authentication"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Base64 encoded signature (secret:timestamp)"
+          }
+        },
+        "description": "Authentication object (null if no secret configured)"
+      }
+    }
+  },
 
-   "example_payloads": {
-     
-     "OPEN_example": {
-       "action": "OPEN",
-       "source": "HFT-ULTRA-2026",
-       "version": "1.0",
-       "timestamp": "2026-01-29T14:30:45.123Z",
-       "timestamp_unix": 1769779845123,
-       "trade_id": "HFT-M1ABC2D-XY3Z",
-       "symbol": "BTC/USDT",
-       "symbol_mt5": "BTCUSD",
-       "symbol_binance": "BTCUSDT",
-       "direction": "BUY",
-       "order_type": 0,
-       "entry_price": 105234.56,
-       "current_price": 105234.56,
-       "take_profit": 105249.56,
-       "stop_loss": 105229.56,
-       "trailing_stop": null,
-       "lot_size": 0.01,
-       "pip_value": 1.0,
-       "pip_size": 0.01,
-       "signal_strength": 5,
-       "exit_price": null,
-       "exit_reason": null,
-       "pnl_pips": null,
-       "pnl_usd": null,
-       "duration_ms": null,
-       "account": {
-         "balance": 102.45,
-         "equity": 103.12,
-         "open_positions": 2,
-         "total_trades": 47,
-         "win_rate": "61.70"
-       },
-       "auth": {
-         "secret": "your-secret-key",
-         "signature": "eW91ci1zZWNyZXQta2V5OjE3Njk3Nzk4NDUxMjM="
-       }
-     },
-     
-     "CLOSE_example": {
-       "action": "CLOSE",
-       "source": "HFT-ULTRA-2026",
-       "version": "1.0",
-       "timestamp": "2026-01-29T14:35:12.456Z",
-       "timestamp_unix": 1769780112456,
-       "trade_id": "HFT-M1ABC2D-XY3Z",
-       "symbol": "BTC/USDT",
-       "symbol_mt5": "BTCUSD",
-       "symbol_binance": "BTCUSDT",
-       "direction": "BUY",
-       "order_type": 0,
-       "entry_price": 105234.56,
-       "current_price": 105249.56,
-       "take_profit": 105249.56,
-       "stop_loss": 105229.56,
-       "trailing_stop": null,
-       "lot_size": 0.01,
-       "pip_value": 1.0,
-       "pip_size": 0.01,
-       "signal_strength": 5,
-       "exit_price": 105249.56,
-       "exit_reason": "TP",
-       "pnl_pips": 15.0,
-       "pnl_usd": 15.0,
-       "duration_ms": 267333,
-       "account": {
-         "balance": 117.45,
-         "equity": 117.45,
-         "open_positions": 1,
-         "total_trades": 48,
-         "win_rate": "62.50"
-       },
-       "auth": null
-     },
-     
-     "TEST_example": {
-       "action": "TEST",
-       "source": "HFT-ULTRA-2026",
-       "version": "1.0",
-       "timestamp": "2026-01-29T14:00:00.000Z",
-       "timestamp_unix": 1769778000000,
-       "message": "Connection test from HFT Ultra 2026"
-     }
-   },
+  "example_payloads": {
+    
+    "OPEN_example": {
+      "action": "OPEN",
+      "source": "HFT-ULTRA-FX-2026",
+      "version": "1.0",
+      "timestamp": "2026-01-29T14:30:45.123Z",
+      "timestamp_unix": 1769779845123,
+      "trade_id": "HFT-M1ABC2D-XY3Z",
+      "symbol": "EUR/USD",
+      "symbol_mt5": "EURUSD",
+      "direction": "BUY",
+      "order_type": 0,
+      "entry_price": 1.08520,
+      "current_price": 1.08520,
+      "take_profit": 1.08670,
+      "stop_loss": 1.08470,
+      "trailing_stop": null,
+      "lot_size": 0.01,
+      "pip_value": 1.0,
+      "pip_size": 0.0001,
+      "signal_strength": 5,
+      "exit_price": null,
+      "exit_reason": null,
+      "pnl_pips": null,
+      "pnl_usd": null,
+      "duration_ms": null,
+      "account": {
+        "balance": 102.45,
+        "equity": 103.12,
+        "open_positions": 2,
+        "total_trades": 47,
+        "win_rate": "61.70"
+      },
+      "auth": {
+        "secret": "your-secret-key",
+        "signature": "eW91ci1zZWNyZXQta2V5OjE3Njk3Nzk4NDUxMjM="
+      }
+    },
+    
+    "CLOSE_example": {
+      "action": "CLOSE",
+      "source": "HFT-ULTRA-FX-2026",
+      "version": "1.0",
+      "timestamp": "2026-01-29T14:35:12.456Z",
+      "timestamp_unix": 1769780112456,
+      "trade_id": "HFT-M1ABC2D-XY3Z",
+      "symbol": "EUR/USD",
+      "symbol_mt5": "EURUSD",
+      "direction": "BUY",
+      "order_type": 0,
+      "entry_price": 1.08520,
+      "current_price": 1.08670,
+      "take_profit": 1.08670,
+      "stop_loss": 1.08470,
+      "trailing_stop": null,
+      "lot_size": 0.01,
+      "pip_value": 1.0,
+      "pip_size": 0.0001,
+      "signal_strength": 5,
+      "exit_price": 1.08670,
+      "exit_reason": "TP",
+      "pnl_pips": 15.0,
+      "pnl_usd": 15.0,
+      "duration_ms": 267333,
+      "account": {
+        "balance": 117.45,
+        "equity": 117.45,
+        "open_positions": 1,
+        "total_trades": 48,
+        "win_rate": "62.50"
+      },
+      "auth": null
+    },
+    
+    "TEST_example": {
+      "action": "TEST",
+      "source": "HFT-ULTRA-FX-2026",
+      "version": "1.0",
+      "timestamp": "2026-01-29T14:00:00.000Z",
+      "timestamp_unix": 1769778000000,
+      "message": "Connection test from HFT Ultra FX 2026"
+    }
+  },
 
-   "mt5_symbol_mapping": {
-     "BTC/USDT": "BTCUSD",
-     "ETH/USDT": "ETHUSD",
-     "BNB/USDT": "BNBUSD",
-     "XRP/USDT": "XRPUSD",
-     "SOL/USDT": "SOLUSD",
-     "DOGE/USDT": "DOGEUSD",
-     "ADA/USDT": "ADAUSD",
-     "AVAX/USDT": "AVAXUSD",
-     "LINK/USDT": "LINKUSD",
-     "DOT/USDT": "DOTUSD",
-     "MATIC/USDT": "MATICUSD",
-     "SHIB/USDT": "SHIBUSD",
-     "LTC/USDT": "LTCUSD",
-     "TRX/USDT": "TRXUSD",
-     "ATOM/USDT": "ATOMUSD",
-     "UNI/USDT": "UNIUSD",
-     "ETC/USDT": "ETCUSD",
-     "XLM/USDT": "XLMUSD",
-     "NEAR/USDT": "NEARUSD",
-     "APT/USDT": "APTUSD",
-     "FIL/USDT": "FILUSD",
-     "ARB/USDT": "ARBUSD",
-     "OP/USDT": "OPUSD",
-     "INJ/USDT": "INJUSD",
-     "SUI/USDT": "SUIUSD",
-     "PEPE/USDT": "PEPEUSD",
-     "WIF/USDT": "WIFUSD",
-     "RENDER/USDT": "RENDERUSD",
-     "FET/USDT": "FETUSD"
-   },
+  "mt5_symbol_mapping": {
+    "major_pairs": {
+      "EUR/USD": "EURUSD",
+      "GBP/USD": "GBPUSD",
+      "USD/JPY": "USDJPY",
+      "USD/CHF": "USDCHF",
+      "AUD/USD": "AUDUSD",
+      "USD/CAD": "USDCAD",
+      "NZD/USD": "NZDUSD"
+    },
+    "euro_crosses": {
+      "EUR/GBP": "EURGBP",
+      "EUR/JPY": "EURJPY",
+      "EUR/CHF": "EURCHF",
+      "EUR/AUD": "EURAUD",
+      "EUR/CAD": "EURCAD",
+      "EUR/NZD": "EURNZD"
+    },
+    "gbp_crosses": {
+      "GBP/JPY": "GBPJPY",
+      "GBP/CHF": "GBPCHF",
+      "GBP/AUD": "GBPAUD",
+      "GBP/CAD": "GBPCAD",
+      "GBP/NZD": "GBPNZD"
+    },
+    "other_crosses": {
+      "AUD/JPY": "AUDJPY",
+      "AUD/NZD": "AUDNZD",
+      "AUD/CAD": "AUDCAD",
+      "AUD/CHF": "AUDCHF",
+      "NZD/JPY": "NZDJPY",
+      "NZD/CAD": "NZDCAD",
+      "NZD/CHF": "NZDCHF",
+      "CAD/JPY": "CADJPY",
+      "CAD/CHF": "CADCHF"
+    },
+    "metals": {
+      "XAU/USD": "XAUUSD"
+    }
+  },
 
-   "mt5_ea_requirements": {
-     "description": "Requirements for your MT5 Expert Advisor to receive these webhooks",
-     "requirements": [
-       "HTTP server listening on a port (e.g., localhost:8080)",
-       "Accept POST requests with Content-Type: application/json",
-       "Parse JSON payload and extract required fields",
-       "Map symbol_mt5 to your broker's symbol naming convention",
-       "Handle order_type: 0=BUY, 1=SELL for OrderSend()",
-       "Implement authentication validation if using secret key",
-       "Return HTTP 200 on success, 4xx/5xx on errors"
-     ],
-     "recommended_libraries": {
-       "mql5": "Use WebRequest() for outbound or custom DLL for inbound HTTP",
-       "python_bridge": "Flask/FastAPI server that communicates with MT5 via MetaTrader5 Python package",
-       "node_bridge": "Express.js server with node-mt5-api or similar"
-     },
-     "cors_note": "If running from browser, your MT5 webhook server must allow CORS (Access-Control-Allow-Origin header)"
-   }
+  "pip_sizes": {
+    "standard": {
+      "description": "Most currency pairs use 0.0001 (4 decimal places)",
+      "value": 0.0001,
+      "pairs": ["EURUSD", "GBPUSD", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP", "EURCHF", "EURAUD", "EURCAD", "EURNZD", "GBPCHF", "GBPAUD", "GBPCAD", "GBPNZD", "AUDNZD", "AUDCAD", "AUDCHF", "NZDCAD", "NZDCHF", "CADCHF"]
+    },
+    "jpy_pairs": {
+      "description": "JPY pairs use 0.01 (2 decimal places)",
+      "value": 0.01,
+      "pairs": ["USDJPY", "EURJPY", "GBPJPY", "AUDJPY", "NZDJPY", "CADJPY"]
+    },
+    "gold": {
+      "description": "XAU/USD uses 0.01",
+      "value": 0.01,
+      "pairs": ["XAUUSD"]
+    }
+  },
+
+  "mt5_ea_requirements": {
+    "description": "Requirements for your MT5 Expert Advisor to receive these webhooks",
+    "requirements": [
+      "HTTP server listening on a port (e.g., localhost:5000)",
+      "Accept POST requests with Content-Type: application/json",
+      "Parse JSON payload and extract required fields",
+      "Map symbol_mt5 to your broker's symbol naming convention",
+      "Handle order_type: 0=BUY, 1=SELL for OrderSend()",
+      "Implement authentication validation if using secret key",
+      "Return HTTP 200 on success, 4xx/5xx on errors"
+    ],
+    "recommended_libraries": {
+      "mql5": "Use WebRequest() for outbound or custom DLL for inbound HTTP",
+      "python_bridge": "Flask/FastAPI server that communicates with MT5 via MetaTrader5 Python package",
+      "node_bridge": "Express.js server with node-mt5-api or similar"
+    },
+    "cors_note": "If running from browser, your MT5 webhook server must allow CORS (Access-Control-Allow-Origin header)"
+  }
 }
+```
