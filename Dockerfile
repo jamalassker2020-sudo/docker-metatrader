@@ -33,7 +33,7 @@ RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
 # Ensure your local file is named 'receiver.py' or update this line
-COPY receiver.py /root/receiver.py
+COPY reciever.py /root/reciever.py
 COPY hft.mq5 /root/hft.mq5
 COPY webhook.json /root/webhook.json
 
