@@ -55,7 +55,7 @@ if [ ! -d \"/root/.wine/drive_c/Python39\" ]; then\n\
   wget -q https://www.python.org/ftp/python/3.9.0/amd64/core.msi -O /root/python-3.9.msi\n\
   wine64 msiexec /i /root/python-3.9.msi /qb\n\
   sleep 10\n\
-  wine64 python -m pip install MetaTrader5 rpyc\n\
+  wine64 python -m pip install mt5linux rpyc\n\
 fi\n\
 \n\
 # 4. MT5 Setup\n\
