@@ -97,21 +97,22 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-WEBHOOK_CONFIG = {
-    "secret_key": "1", # Match this in your HFT Ultra dashboard
-    "enable_trading": True
-}
-# Track active trades by trade_id
-active_trades = {}
-mt5_connected = False
+# 1. Serve the Desktop UI
 
-@app.route('/status', methods=['GET'])
+
+@app.route('/<path:path>')
+def static_files(path):
+    return send_from_directory('/usr/share/novnc', path)
+
+# 2. Your Webhook Logic
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    # ... your trading logic ...
+    return jsonify({"status": "success"})
+
+@app.route('/status')
 def status():
-    return jsonify({
-        "status": "running",
-        "mt5_connected": mt5.terminal_info() is not None,
-        "message": "Receiver is active on Railway"
-    })
+    return jsonify({"status": "running"})
 
 @app.route('/webhook', methods=['POST', 'OPTIONS'])
 def webhook():
