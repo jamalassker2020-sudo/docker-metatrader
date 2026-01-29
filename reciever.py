@@ -123,8 +123,13 @@ logger = logging.getLogger(__name__)
 # ============================================
 
 app = Flask(__name__)
-CORS(app)
-
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"]
+    }
+})
 # Track active trades by trade_id
 active_trades = {}
 mt5_connected = False
