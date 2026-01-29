@@ -17,26 +17,27 @@ RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     wine64 wine32 xvfb x11-utils x11vnc websockify \
-    openbox python3-xdg wget ca-certificates unzip git python3 python3-pip && \
+    openbox wget ca-certificates unzip git python3 python3-pip && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Step 4: Install Python dependencies
+# We include flask-cors to solve the "Failed to Fetch" error
 RUN pip3 install --no-cache-dir flask flask-cors mt5linux pytz rpyc
 
-# Step 5: Install noVNC (The UI files Flask will serve)
+# Step 5: Install noVNC
 RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
     cp /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
 
-# Step 6: Setup Files (Adding reciever, mq5, and your json)
+# Step 6: Setup Files
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
-COPY reciever.py /root/reciever.py
+# Ensure your local file is named 'receiver.py' or update this line
+COPY receiver.py /root/receiver.py
 COPY hft.mq5 /root/hft.mq5
 COPY webhook.json /root/webhook.json
 
-# Step 7: The Startup Script
-# This script ensures everything launches in order when the container starts
+# Step 7: The Optimized Startup Script
 RUN printf "#!/bin/bash\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
 \n\
@@ -45,10 +46,10 @@ Xvfb :1 -screen 0 \${SCREEN_RESOLUTION}x24 &\n\
 sleep 2\n\
 openbox-session &\n\
 \n\
-# 2. Start VNC (Internal display engine)\n\
+# 2. Start VNC (Internal only on 5900)\n\
 x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
 \n\
-# 3. Start Websockify (Internal bridge for the UI)\n\
+# 3. Start Websockify (Internal bridge on 6080)\n\
 websockify 6080 localhost:5900 &\n\
 \n\
 # 4. Initialize Wine & MT5\n\
@@ -64,9 +65,9 @@ wine64 python -m mt5linux &\n\
 wine64 \"\$MT5_PATH/terminal64.exe\" /portable &\n\
 \n\
 # 6. FINAL: Launch the Webhook Receiver\n\
-# This launches reciever.py which will read webhook.json\n\
-# It listens on port 8080 as required by Railway\n\
-python3 /root/reciever.py\n\
+# Using the Railway PORT variable for public access\n\
+echo \"Starting Webhook Receiver on Port: \$PORT\"\n\
+python3 /root/receiver.py\n\
 " > /start.sh && \
     chmod +x /start.sh
 
