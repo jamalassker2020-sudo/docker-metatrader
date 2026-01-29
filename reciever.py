@@ -45,7 +45,7 @@ MT5_CONFIG = {
 
 WEBHOOK_CONFIG = {
     "host": "0.0.0.0",
-    "port": 5000,
+    "port": 8080,
     "secret_key": "",
     "enable_trading": True,
     "max_slippage": 20,
