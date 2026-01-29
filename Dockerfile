@@ -34,6 +34,9 @@ RUN dpkg --add-architecture i386 && \
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
 COPY hft.mq5 /root/hft.mq5
+COPY index.html /root/index.html
+COPY webhook.json /root/webhook.json
+COPY reciever.py /root/reciever.py
 
 # Step 5: Create Startup Script
 RUN printf '#!/bin/bash\n\
