@@ -20,7 +20,8 @@ Author: HFT Ultra FX 2026
 Version: 1.0
 """
 
-import MetaTrader5 as mt5
+from mt5linux import MetaTrader5
+mt5 = MetaTrader5()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
