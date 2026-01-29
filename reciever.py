@@ -36,7 +36,7 @@ MT5_CONFIG = {
 
 WEBHOOK_CONFIG = {
      "host": "0.0.0.0",      # Listen on all interfaces
-     "port": 8080,            # Webhook port
+     "port": 5000,            # Webhook port
      "secret_key": "",        # Optional: match with HFT Ultra secret
      "enable_trading": True,  # Set to False for testing without trades
      "max_slippage": 20,      # Max slippage in points
@@ -634,7 +634,7 @@ if __name__ == '__main__':
        logger.info(f"🚀 Starting webhook server on port 5000")
         app.run(
             host="0.0.0.0",
-            port=8080, 
+            port=5000, 
             debug=False,
             threaded=True
         )
