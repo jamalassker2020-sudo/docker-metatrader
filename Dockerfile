@@ -50,7 +50,7 @@ x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
 \n\
 # 3. Live Install Python dependencies (Inside the session)\n\
 echo "Installing Flask and tools..."\n\
-pip3 install flask flask-cors metatrader5 pytz\n\
+pip3 install flask flask-cors mt5linux pytz\n\
 \n\
 # 4. Initialize Wine Environment\n\
 wine64 wineboot --init\n\
