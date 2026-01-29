@@ -95,12 +95,37 @@ logger = logging.getLogger(__name__)
 # ============================================
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for browser requests
+CORS(app, resources={r"/*": {"origins": "*"}})
 
+WEBHOOK_CONFIG = {
+    "secret_key": "1", # Match this in your HFT Ultra dashboard
+    "enable_trading": True
+}
 # Track active trades by trade_id
 active_trades = {}
 mt5_connected = False
 
+@app.route('/status', methods=['GET'])
+def status():
+    return jsonify({
+        "status": "running",
+        "mt5_connected": mt5.terminal_info() is not None,
+        "message": "Receiver is active on Railway"
+    })
+
+@app.route('/webhook', methods=['POST', 'OPTIONS'])
+def webhook():
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    payload = request.get_json()
+    # Simple secret check
+    auth = payload.get("auth", {})
+    if WEBHOOK_CONFIG["secret_key"] and auth.get("secret") != WEBHOOK_CONFIG["secret_key"]:
+        return jsonify({"success": False, "error": "Invalid Secret Key"}), 403
+
+    # Add your execute_open / execute_close logic here...
+    return jsonify({"success": True, "message": "Signal received"})
 # ============================================
 # MT5 CONNECTION
 # ============================================
