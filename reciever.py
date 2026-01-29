@@ -1,4 +1,24 @@
+"""
+MT5 Webhook Receiver for HFT Ultra FX 2026
+==========================================
+Receives FOREX trading signals via HTTP webhook and executes trades on MetaTrader 5
 
+SUPPORTED PAIRS (28 Total):
+- Major Pairs: EUR/USD, GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD, NZD/USD
+- Euro Crosses: EUR/GBP, EUR/JPY, EUR/CHF, EUR/AUD, EUR/CAD, EUR/NZD
+- GBP Crosses: GBP/JPY, GBP/CHF, GBP/AUD, GBP/CAD, GBP/NZD
+- Other Crosses: AUD/JPY, AUD/NZD, AUD/CAD, AUD/CHF, NZD/JPY, NZD/CAD, NZD/CHF, CAD/JPY, CAD/CHF
+- Metals: XAU/USD
+
+SETUP:
+1. Install dependencies: pip install flask flask-cors metatrader5 pytz
+2. Update credentials below
+3. Run: python mt5_webhook_receiver.py
+4. Configure webhook URL in HFT Ultra FX: http://YOUR_VPS_IP:5000/webhook
+
+Author: HFT Ultra FX 2026
+Version: 1.0
+"""
 
 import MetaTrader5 as mt5
 from flask import Flask, request, jsonify
@@ -8,7 +28,6 @@ import logging
 from datetime import datetime
 import threading
 import time
-from flask import send_from_directory
 
 # ============================================
 # CONFIGURATION - UPDATE THESE VALUES
@@ -24,7 +43,7 @@ MT5_CONFIG = {
 
 WEBHOOK_CONFIG = {
     "host": "0.0.0.0",
-    "port": 8080,
+    "port": 5000,
     "secret_key": "",
     "enable_trading": True,
     "max_slippage": 20,
@@ -103,13 +122,9 @@ logger = logging.getLogger(__name__)
 # ============================================
 
 app = Flask(__name__)
-# Use this simplified version temporarily to verify the connection
-CORS(
-    app,
-    resources={r"/webhook": {"origins": "*"}},
-    methods=["POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"]
-)# Track active trades by trade_id
+CORS(app)
+
+# Track active trades by trade_id
 active_trades = {}
 mt5_connected = False
 
@@ -117,15 +132,6 @@ mt5_connected = False
 # MT5 CONNECTION
 # ============================================
 
-@app.route('/')
-def serve_desktop():
-    """Serves the MT5 Desktop UI"""
-    return send_from_directory('/usr/share/novnc', 'index.html')
-
-@app.route('/<path:path>')
-def serve_static(path):
-    """Serves required JS/CSS files for noVNC"""
-    return send_from_directory('/usr/share/novnc', path)
 def connect_mt5():
     """Initialize and connect to MetaTrader 5"""
     global mt5_connected
@@ -628,4 +634,3 @@ if __name__ == '__main__':
         print("2. Enable 'Allow algorithmic trading' in MT5 settings")
         print("3. Verify your login credentials")
         print("4. Check if the server name is correct")
-
