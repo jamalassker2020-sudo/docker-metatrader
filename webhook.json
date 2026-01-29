@@ -1,6 +1,3 @@
-Here's the complete JSON specification with the + signs and line numbers removed:
-
-```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "HFT Ultra FX Smart Lock 2026 - MT5 Webhook Specification",
@@ -494,4 +491,4 @@ Here's the complete JSON specification with the + signs and line numbers removed
     "cors_note": "CORS is enabled for all origins in the provided receiver"
   }
 }
-```
+
