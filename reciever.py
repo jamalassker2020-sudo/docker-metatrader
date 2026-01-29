@@ -38,9 +38,9 @@ import time
 # ============================================
 
 MT5_CONFIG = {
-    "server": "YourBroker-Server",      # e.g., "ICMarkets-Demo", "Exness-MT5Real"
-    "login": 12345678,                   # Your MT5 account number
-    "password": "YourPassword",          # Your MT5 password
+    "server": "ValetaxIntI-Live1",      # e.g., "ICMarkets-Demo", "Exness-MT5Real"
+    "login": 641086382,                   # Your MT5 account number
+    "password": "EJam123!@",          # Your MT5 password
     "timeout": 10000,
     "portable": False
 }
