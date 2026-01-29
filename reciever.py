@@ -1,6 +1,4 @@
-Here's the complete Python code with the + signs and line numbers removed:
 
-```python
 """
 MT5 Webhook Receiver for HFT Ultra FX Smart Lock 2026
 ======================================================
@@ -772,4 +770,4 @@ if __name__ == '__main__':
             debug=False,
             threaded=True
         )
-```
+
