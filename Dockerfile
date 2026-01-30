@@ -1,7 +1,7 @@
-# Step 1: Base Imag# Step 1: Base Image
+# Step 1: Base Imag## Step 1: Base Image
 FROM ubuntu:22.04
 
-# Step 2: Env Vars - Adding /opt/wine-stable/bin just in case
+# Step 2: Env Vars
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:1 \
     WINEDEBUG=-all \
@@ -17,12 +17,12 @@ USER root
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-    wine64 wine32 wine xvfb x11vnc websockify openbox \
+    wine64 wine32 xvfb x11vnc websockify openbox \
     wget ca-certificates git python3 python3-pip python3-xdg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Step 4: Fix Wine pathing - Ensure 'wine' command exists
-RUN ln -s /usr/bin/wine64 /usr/bin/wine
+# Step 4: Fix Wine pathing - Use -sf to FORCE the link
+RUN ln -sf /usr/bin/wine64 /usr/bin/wine
 
 # Step 5: Python Setup
 RUN pip3 install --no-cache-dir flask flask-cors mt5linux pytz rpyc requests
@@ -75,6 +75,7 @@ python3 /root/reciever.py\n\
 # Step 9: Ports
 EXPOSE 8080 6080 5900
 CMD ["/bin/bash", "/start.sh"]
+"/bin/bash", "/start.sh"]
 
 
 
