@@ -1,6 +1,6 @@
-# ===============================
-# MT5 + Wine + noVNC + Webhook
-# Production-ready Dockerfile
+# =================# ===============================
+# MT5 + Wine + noVNC + Railway
+# FULL STABLE PRODUCTION IMAGE
 # ===============================
 
 FROM ubuntu:22.04
@@ -14,7 +14,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WINEARCH=win64 \
     WINEPREFIX=/root/.wine \
     SCREEN_RESOLUTION=1280x720 \
-    PORT=8080 \
     PATH="/usr/lib/wine:/usr/bin:/usr/local/bin:$PATH"
 
 USER root
@@ -62,7 +61,7 @@ RUN mkdir -p /root/templates && \
     cp /root/index.html /root/templates/index.html
 
 # -------------------------------
-# Startup script
+# Startup script (Railway-safe)
 # -------------------------------
 RUN printf "#!/bin/bash\n\
 set -e\n\
@@ -89,23 +88,23 @@ sleep 20\n\
 \n\
 MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
 \n\
-if [ ! -f \"$MT5_PATH/terminal64.exe\" ]; then\n\
-  echo '=== INSTALLING MT5 ==='\n\
+if [ ! -d \"$MT5_PATH\" ]; then\n\
+  echo '=== INSTALLING MT5 (FIRST RUN) ==='\n\
   wine /root/mt5setup.exe /portable /auto\n\
-  sleep 60\n\
+  sleep 90\n\
 fi\n\
 \n\
 echo '=== STARTING MT5 ==='\n\
 wine \"$MT5_PATH/terminal64.exe\" /portable &\n\
 \n\
 echo '=== WAITING FOR MT5 ==='\n\
-sleep 40\n\
+sleep 45\n\
 \n\
-echo '=== MT5 LINUX BRIDGE ==='\n\
+echo '=== STARTING MT5 LINUX BRIDGE ==='\n\
 python3 -m mt5linux.bridge &\n\
 sleep 10\n\
 \n\
-echo '=== WEBHOOK SERVER ==='\n\
+echo '=== STARTING WEBHOOK SERVER ==='\n\
 exec python3 /root/reciever.py\n\
 " > /start.sh && chmod +x /start.sh
 
