@@ -1,4 +1,5 @@
-# Step 1: Base Imag## Step 1: Base Image
+
+# Step 1: Base Image
 FROM ubuntu:22.04
 
 # Step 2: Env Vars
@@ -75,7 +76,5 @@ python3 /root/reciever.py\n\
 # Step 9: Ports
 EXPOSE 8080 6080 5900
 CMD ["/bin/bash", "/start.sh"]
-"/bin/bash", "/start.sh"]
-
 
 
