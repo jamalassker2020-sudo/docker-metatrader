@@ -1,4 +1,3 @@
-
 # Step 1: Use official Ubuntu 22.04
 FROM ubuntu:22.04
 
@@ -35,46 +34,52 @@ RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
 
-# Copy your files directly into /root
+# Copy your files
 COPY reciever.py /root/reciever.py
 COPY webhook.json /root/webhook.json
 COPY index.html /root/index.html
 
-# Create a 'templates' folder specifically for Flask to find the index.html
+# Setup templates for Flask
 RUN mkdir -p /root/templates && cp /root/index.html /root/templates/index.html
 
-# Step 7: The Optimized Startup Script
+# Step 7: The Final Corrected Startup Script
 RUN printf "#!/bin/bash\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
 \n\
 # 1. Start Virtual Display\n\
 Xvfb :1 -screen 0 \${SCREEN_RESOLUTION}x24 &\n\
-sleep 2\n\
+sleep 3\n\
 openbox-session &\n\
 \n\
 # 2. Start VNC (5900) & noVNC (6080)\n\
 x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
 websockify --web /usr/share/novnc 6080 localhost:5900 &\n\
 \n\
-# 3. Initialize Wine & MT5 Bridge\n\
+# 3. Initialize Wine\n\
 wine64 wineboot --init &\n\
-python3 -m mt5linux & \n\
+sleep 5\n\
 \n\
-# 4. Background MT5 Launch\n\
+# 4. Start the MT5 Bridge (FIXED COMMAND)\n\
+# We use 'python3' to run the bridge on the linux side\n\
+python3 -m mt5linux python & \n\
+sleep 5\n\
+\n\
+# 5. Background MT5 Launch\n\
 MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
 ( \n\
-  sleep 15\n\
+  sleep 10\n\
   if [ ! -f \"\$MT5_PATH/terminal64.exe\" ]; then\n\
     echo 'Installing MetaTrader 5...'\n\
     wine64 /root/mt5setup.exe /portable /auto\n\
-    sleep 20\n\
+    sleep 30\n\
   fi\n\
   echo 'Launching MetaTrader 5...'\n\
   wine64 \"\$MT5_PATH/terminal64.exe\" /portable &\n\
 ) &\n\
 \n\
-# 5. FINAL: Launch Webserver\n\
+# 6. FINAL: Launch Webserver with a small delay to ensure bridge is up\n\
 echo \"🚀 Webhook Receiver & Dashboard Live on Port: \$PORT\"\n\
+sleep 5\n\
 python3 /root/reciever.py\n\
 " > /start.sh && \
     chmod +x /start.sh
@@ -82,3 +87,4 @@ python3 /root/reciever.py\n\
 # Step 8: Final Config
 EXPOSE 8080 6080 5900
 CMD ["/bin/bash", "/start.sh"]
+
