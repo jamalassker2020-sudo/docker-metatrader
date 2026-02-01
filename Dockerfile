@@ -61,21 +61,19 @@ RUN mkdir -p /root/templates && cp /root/index.html /root/templates/index.html
 # -------------------------------
 # Robust Startup script
 # -------------------------------
+# -------------------------------
+# Robust Startup script (Fixed Bridge)
+# -------------------------------
 RUN printf "#!/bin/bash\n\
 set -e\n\
 \n\
-# Cleanup X11\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
 \n\
 echo '=== STARTING DISPLAY SERVICES ==='\n\
 Xvfb :1 -screen 0 \${SCREEN_RESOLUTION}x24 &\n\
 sleep 2\n\
 openbox-session &\n\
-# Optimized x11vnc to prevent 'Disconnected' errors\n\
 x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -noxdamage -ncache 10 &\n\
-\n\
-echo '=== STARTING noVNC (Public Interface) ==='\n\
-# Websockify takes the Railway PORT (8080) to show the desktop\n\
 websockify --web /usr/share/novnc \${PORT} localhost:5900 &\n\
 \n\
 echo '=== WINE INIT ==='\n\
@@ -95,26 +93,19 @@ wine \"\$MT5_PATH/terminal64.exe\" /portable &\n\
 sleep 40\n\
 \n\
 echo '=== STARTING MT5 LINUX BRIDGE ==='\n\
-python3 -m mt5linux.bridge &\n\
+# We use the direct python path and ensure the module is found\n\
+export PYTHONPATH=\$PYTHONPATH:/usr/local/lib/python3.10/dist-packages\n\
+python3 -m mt5linux &\n\
 \n\
-# Wait for Bridge port 18812 to be open\n\
+# Check for the default RPyC port (18812)\n\
 while ! timeout 1s bash -c \"echo > /dev/tcp/localhost/18812\" 2>/dev/null; do\n\
-  echo 'Waiting for bridge...'\n\
-  sleep 2\n\
+  echo 'Waiting for MT5 Bridge on port 18812...'\n\
+  sleep 5\n\
 done\n\
 \n\
-echo '=== STARTING WEBHOOK SERVER (Internal Port 5000) ==='\n\
+echo '=== STARTING WEBHOOK SERVER ==='\n\
 python3 /root/reciever.py &\n\
 \n\
 echo '=== SYSTEM READY ==='\n\
 wait -n\n\
 " > /start.sh && chmod +x /start.sh
-
-# -------------------------------
-# Configuration
-# -------------------------------
-# We expose the main Railway port and the VNC port
-EXPOSE 8080 5900 5000
-
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/bin/bash", "/start.sh"]
