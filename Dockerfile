@@ -1,4 +1,4 @@
-# =================# ===============================
+# ===============================
 # MT5 + Wine + noVNC + Railway
 # FULL STABLE PRODUCTION IMAGE
 # ===============================
@@ -14,16 +14,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WINEARCH=win64 \
     WINEPREFIX=/root/.wine \
     SCREEN_RESOLUTION=1280x720 \
+    PORT=8080 \
     PATH="/usr/lib/wine:/usr/bin:/usr/local/bin:$PATH"
 
 USER root
 
 # -------------------------------
-# System + Wine + X11
+# System + Wine + X11 + Tini
 # -------------------------------
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
+    tini \
     wine64 wine32 \
     xvfb x11vnc openbox \
     websockify \
@@ -61,56 +63,52 @@ RUN mkdir -p /root/templates && \
     cp /root/index.html /root/templates/index.html
 
 # -------------------------------
-# Startup script (Railway-safe)
+# Startup script
 # -------------------------------
 RUN printf "#!/bin/bash\n\
 set -e\n\
 \n\
+# Clean up old locks\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
 \n\
-echo '=== XVFB ==='\n\
-Xvfb :1 -screen 0 ${SCREEN_RESOLUTION}x24 &\n\
-sleep 3\n\
-\n\
-echo '=== OPENBOX ==='\n\
-openbox-session &\n\
+echo '=== STARTING DISPLAY SERVICES ==='\n\
+Xvfb :1 -screen 0 \${SCREEN_RESOLUTION}x24 &\n\
 sleep 2\n\
-\n\
-echo '=== VNC ==='\n\
+openbox-session &\n\
 x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
-\n\
-echo '=== noVNC ==='\n\
 websockify --web /usr/share/novnc 6080 localhost:5900 &\n\
+\n\
+echo '=== STARTING WEBHOOK SERVER (Health Check) ==='\n\
+# Start the python receiver first so Railway's health check passes\n\
+python3 /root/reciever.py &\n\
 \n\
 echo '=== WINE INIT ==='\n\
 wine wineboot --init\n\
-sleep 20\n\
+sleep 15\n\
 \n\
 MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
 \n\
-if [ ! -d \"$MT5_PATH\" ]; then\n\
-  echo '=== INSTALLING MT5 (FIRST RUN) ==='\n\
+if [ ! -d \"\$MT5_PATH\" ]; then\n\
+  echo '=== INSTALLING MT5 ==='\n\
   wine /root/mt5setup.exe /portable /auto\n\
-  sleep 90\n\
+  sleep 60\n\
 fi\n\
 \n\
-echo '=== STARTING MT5 ==='\n\
-wine \"$MT5_PATH/terminal64.exe\" /portable &\n\
-\n\
-echo '=== WAITING FOR MT5 ==='\n\
-sleep 45\n\
-\n\
-echo '=== STARTING MT5 LINUX BRIDGE ==='\n\
+echo '=== STARTING MT5 & BRIDGE ==='\n\
+wine \"\$MT5_PATH/terminal64.exe\" /portable &\n\
+sleep 30\n\
 python3 -m mt5linux.bridge &\n\
-sleep 10\n\
 \n\
-echo '=== STARTING WEBHOOK SERVER ==='\n\
-exec python3 /root/reciever.py\n\
+echo '=== SYSTEM READY ==='\n\
+# Keep container alive and monitor background processes\n\
+wait -n\n\
 " > /start.sh && chmod +x /start.sh
 
 # -------------------------------
-# Ports
+# Configuration
 # -------------------------------
 EXPOSE 8080 6080 5900
 
+# Use tini to handle signals and zombie processes properly
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/bin/bash", "/start.sh"]
