@@ -51,39 +51,53 @@ COPY receiver.py /root/
 # -------------------------------
 # Startup
 # -------------------------------
+# ... (Keep your existing Dockerfile until the Start script)
+
+# -------------------------------
+# Final Stabilized Startup Script
+# -------------------------------
 RUN printf '#!/bin/bash\n\
 set -e\n\
 \n\
+# Ensure X11 cleanup\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
 \n\
+echo "=== STARTING GUI SERVICES ==="\n\
 Xvfb :1 -screen 0 ${SCREEN_RESOLUTION}x24 &\n\
-sleep 2\n\
+sleep 3\n\
 openbox-session &\n\
-x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
+# Enhanced VNC stability\n\
+/usr/bin/x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -noxdamage -ncache 10 &\n\
+/usr/bin/websockify --web /usr/share/novnc ${PORT} localhost:5900 &\n\
 \n\
-# PUBLIC PORT (Railway)\n\
-websockify --web /usr/share/novnc ${PORT} localhost:5900 &\n\
+echo "=== INITIALIZING WINE64 ==="\n\
+# Use absolute paths to avoid "command not found"\n\
+/usr/bin/wine64 wineboot --init\n\
+sleep 20\n\
 \n\
-wine wineboot --init\n\
-sleep 15\n\
-\n\
-MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
-if [ ! -d \"$MT5_PATH\" ]; then\n\
-  wine /root/mt5setup.exe /portable /auto\n\
+MT5_PATH="/root/.wine/drive_c/Program Files/MetaTrader 5"\n\
+if [ ! -d "$MT5_PATH" ]; then\n\
+  echo "=== INSTALLING MT5 ==="\n\
+  /usr/bin/wine64 /root/mt5setup.exe /portable /auto\n\
   sleep 90\n\
 fi\n\
 \n\
-wine \"$MT5_PATH/terminal64.exe\" /portable &\n\
-sleep 40\n\
+echo "=== STARTING MT5 TERMINAL ==="\n\
+/usr/bin/wine64 "$MT5_PATH/terminal64.exe" /portable &\n\
+sleep 45\n\
 \n\
-python3 -m mt5linux &\n\
+echo "=== STARTING PYTHON BRIDGE ==="\n\
+/usr/bin/python3 -m mt5linux &\n\
 \n\
-echo \"Waiting for MT5 bridge...\"\n\
-until timeout 1 bash -c \"echo > /dev/tcp/localhost/18812\"; do sleep 3; done\n\
+echo "Waiting for MT5 bridge on 18812..."\n\
+until timeout 1 bash -c "echo > /dev/tcp/localhost/18812" 2>/dev/null; do \n\
+  sleep 5\n\
+done\n\
 \n\
-# INTERNAL WEBHOOK\n\
-python3 /root/receiver.py\n\
+echo "=== STARTING WEBHOOK SERVER ON 8081 ==="\n\
+/usr/bin/python3 /root/receiver.py\n\
 ' > /start.sh && chmod +x /start.sh
 
-ENTRYPOINT ["/usr/bin/tini","--"]
-CMD ["/start.sh"]
+# Ensure Tini is used correctly
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/bin/bash", "/start.sh"]
