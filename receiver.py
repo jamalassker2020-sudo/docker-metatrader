@@ -6,7 +6,7 @@ import logging
 # --- CREDENTIALS FROM YOUR SPEC ---
 MT5_LOGIN = 641086382
 MT5_PASS = "EJam123!@"
-MT5_SERVER = "ValetaxIntI-Live3" # Valetax Alive
+MT5_SERVER = "ValetaxGlobal-Live3" # Valetax Alive
 
 app = Flask(__name__)
 mt5 = MetaTrader5(host="localhost", port=18812)
