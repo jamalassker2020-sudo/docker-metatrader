@@ -10,9 +10,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     FLASK_PORT=8081
 
 USER root
-#RUN apt-get update && apt-get install -y wine
+RUN apt-get update && apt-get install -y wine
 # Add any other MT5 dependencies here
-#USER mtuser
+USER mtuser
 
 # -------------------------------
 # 1. System dependencies (Robust Wine Install)
