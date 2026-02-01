@@ -6,50 +6,84 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WINEARCH=win64 \
     WINEPREFIX=/root/.wine \
     SCREEN_RESOLUTION=1280x720 \
-    PORT=8080
+    PORT=8080 \
+    FLASK_PORT=8081
 
-RUN dpkg --add-architecture i386 && apt-get update && \
-    apt-get install -y --no-install-recommends tini wine64 wine32 xvfb x11vnc openbox websockify wget ca-certificates git python3 python3-pip && \
+USER root
+
+# -------------------------------
+# System dependencies
+# -------------------------------
+RUN dpkg --add-architecture i386 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    tini \
+    wine64 wine32 \
+    xvfb x11vnc openbox \
+    websockify \
+    wget ca-certificates git \
+    python3 python3-pip python3-xdg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN ln -sf /usr/bin/wine64 /usr/bin/wine
-RUN pip3 install --no-cache-dir flask flask-cors requests rpyc mt5linux
 
+# -------------------------------
+# Python deps
+# -------------------------------
+RUN pip3 install --no-cache-dir \
+    flask flask-cors requests pytz \
+    rpyc mt5linux
+
+# -------------------------------
+# noVNC
+# -------------------------------
 RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
+    git clone https://github.com/novnc/websockify /usr/share/novnc/utils/websockify && \
     cp /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
 
+# -------------------------------
+# App files
+# -------------------------------
 WORKDIR /root
-RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
-COPY reciever.py /root/
+RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
+COPY receiver.py /root/
 
-RUN printf "#!/bin/bash\n\
+# -------------------------------
+# Startup
+# -------------------------------
+RUN printf '#!/bin/bash\n\
 set -e\n\
+\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
-Xvfb :1 -screen 0 \${SCREEN_RESOLUTION}x24 &\n\
+\n\
+Xvfb :1 -screen 0 ${SCREEN_RESOLUTION}x24 &\n\
 sleep 2\n\
 openbox-session &\n\
-# OPTIMIZED VNC SETTINGS\n\
-x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -noxdamage -ncache 10 &\n\
-# VNC ON PORT 8080\n\
-websockify --web /usr/share/novnc \${PORT} localhost:5900 &\n\
+x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
 \n\
-wine wineboot --init && sleep 15\n\
-if [ ! -d \"/root/.wine/drive_c/Program Files/MetaTrader 5\" ]; then\n\
-  wine /root/mt5setup.exe /portable /auto && sleep 60\n\
+# PUBLIC PORT (Railway)\n\
+websockify --web /usr/share/novnc ${PORT} localhost:5900 &\n\
+\n\
+wine wineboot --init\n\
+sleep 15\n\
+\n\
+MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
+if [ ! -d \"$MT5_PATH\" ]; then\n\
+  wine /root/mt5setup.exe /portable /auto\n\
+  sleep 90\n\
 fi\n\
 \n\
-wine \"/root/.wine/drive_c/Program Files/MetaTrader 5/terminal64.exe\" /portable &\n\
-sleep 30\n\
+wine \"$MT5_PATH/terminal64.exe\" /portable &\n\
+sleep 40\n\
 \n\
-# START BRIDGE\n\
 python3 -m mt5linux &\n\
-while ! timeout 1s bash -c \"echo > /dev/tcp/localhost/18812\" 2>/dev/null; do sleep 2; done\n\
 \n\
-# START WEBHOOK ON 5000\n\
-python3 /root/reciever.py &\n\
-wait -n\n\
-" > /start.sh && chmod +x /start.sh
+echo \"Waiting for MT5 bridge...\"\n\
+until timeout 1 bash -c \"echo > /dev/tcp/localhost/18812\"; do sleep 3; done\n\
+\n\
+# INTERNAL WEBHOOK\n\
+python3 /root/receiver.py\n\
+' > /start.sh && chmod +x /start.sh
 
-EXPOSE 8080 5000
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/bin/bash", "/start.sh"]
+ENTRYPOINT ["/usr/bin/tini","--"]
+CMD ["/start.sh"]
