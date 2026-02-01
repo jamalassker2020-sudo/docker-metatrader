@@ -1,83 +1,99 @@
-"""
-MT5 Webhook Receiver for HFT Ultra FX Smart Lock 2026
-Fixed Port version to avoid Railway Conflict
-"""
 from mt5linux import MetaTrader5
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os
-import logging
-import threading
-import time
+import os, logging, time, threading
 from datetime import datetime
 
-# ============================================
-# CONFIGURATION
-# ============================================
 MT5_CONFIG = {
     "server": "ValetaxIntI-Live1",
     "login": 641086382,
     "password": "EJam123!@",
-    "timeout": 10000
 }
 
-# We force Port 5000 here
-WEBHOOK_PORT = 5000
+FLASK_PORT = int(os.environ.get("FLASK_PORT", 8081))
 
-SYMBOL_MAP = {
-    "BTCUSD": "BTCUSD", "ETHUSD": "ETHUSD", "SOLUSD": "SOLUSD", "XRPUSD": "XRPUSD",
-    "EURUSD": "EURUSD", "GBPUSD": "GBPUSD", "USDJPY": "USDJPY", "XAUUSD": "XAUUSD"
-}
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("MT5-WEBHOOK")
 
 app = Flask(__name__)
 CORS(app)
 
 mt5 = None
-mt5_connected = False
+connected = False
 
-def init_mt5():
-    global mt5, mt5_connected
+def connect_mt5():
+    global mt5, connected
     try:
         if mt5 is None:
-            mt5 = MetaTrader5(host='localhost', port=18812)
+            mt5 = MetaTrader5(host="localhost", port=18812)
+
         if not mt5.initialize():
             return False
-        authorized = mt5.login(login=MT5_CONFIG["login"], password=MT5_CONFIG["password"], server=MT5_CONFIG["server"])
-        if authorized:
-            mt5_connected = True
-            return True
-        return False
-    except Exception as e:
-        logger.error(f"Bridge error: {e}")
-        return False
 
-def ensure_connection():
-    global mt5_connected
-    if not mt5_connected or mt5 is None or mt5.account_info() is None:
-        return init_mt5()
+        if mt5.login(**MT5_CONFIG):
+            connected = True
+            logger.info("MT5 LOGIN OK")
+            return True
+    except Exception as e:
+        logger.error(e)
+    return False
+
+def ensure():
+    if not connected:
+        return connect_mt5()
     return True
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    payload = request.get_json()
-    action = payload.get("action")
-    if action == "OPEN":
-        if not ensure_connection(): return jsonify({"success": False, "error": "MT5 Offline"})
-        # ... (rest of your trade logic remains the same)
-    return jsonify({"success": True})
-
-@app.route('/status')
-def status():
-    conn = ensure_connection()
-    return jsonify({"mt5_connected": conn, "timestamp": datetime.now().isoformat()})
-
-@app.route('/')
+@app.route("/")
 def home():
-    return "HFT Webhook Active on Port 5000"
+    return "WEBHOOK OK"
+
+@app.route("/status")
+def status():
+    return jsonify({
+        "mt5": ensure(),
+        "time": datetime.utcnow().isoformat()
+    })
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    if not ensure():
+        return jsonify({"error": "MT5 offline"}), 500
+
+    symbol = data["symbol_mt5"]
+    action = data["action"]
+    lot = float(data.get("lot_size", 0.01))
+
+    mt5.symbol_select(symbol, True)
+    tick = mt5.symbol_info_tick(symbol)
+
+    if action == "OPEN":
+        order_type = mt5.ORDER_TYPE_BUY if data["direction"] == "BUY" else mt5.ORDER_TYPE_SELL
+        price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
+
+        result = mt5.order_send({
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": lot,
+            "type": order_type,
+            "price": price,
+            "magic": 202602,
+            "type_filling": mt5.ORDER_FILLING_IOC
+        })
+
+        return jsonify({"retcode": result.retcode})
+
+    return jsonify({"error": "Invalid action"})
+
+def heartbeat():
+    while True:
+        try:
+            if connected:
+                mt5.account_info()
+        except:
+            pass
+        time.sleep(30)
 
 if __name__ == "__main__":
-    # Internal port 5000
-    app.run(host="0.0.0.0", port=WEBHOOK_PORT)
+    threading.Thread(target=heartbeat, daemon=True).start()
+    app.run(host="0.0.0.0", port=FLASK_PORT)
