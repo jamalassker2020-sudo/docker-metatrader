@@ -1,6 +1,6 @@
 # ===============================
 # MT5 + Wine + noVNC + Railway
-# FULL STABLE PRODUCTION IMAGE
+# FULL STABLE PRODUCTION IMAGE - V2
 # ===============================
 
 FROM ubuntu:22.04
@@ -44,7 +44,7 @@ RUN pip3 install --no-cache-dir \
     rpyc mt5linux
 
 # -------------------------------
-# noVNC
+# noVNC Setup
 # -------------------------------
 RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
     git clone https://github.com/novnc/websockify /usr/share/novnc/utils/websockify && \
@@ -54,33 +54,29 @@ RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
 # App files
 # -------------------------------
 WORKDIR /root
-
-RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe \
-    -O /root/mt5setup.exe
-
+RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe -O /root/mt5setup.exe
 COPY reciever.py webhook.json index.html /root/
-RUN mkdir -p /root/templates && \
-    cp /root/index.html /root/templates/index.html
+RUN mkdir -p /root/templates && cp /root/index.html /root/templates/index.html
 
 # -------------------------------
-# Startup script
+# Robust Startup script
 # -------------------------------
 RUN printf "#!/bin/bash\n\
 set -e\n\
 \n\
-# Clean up old locks\n\
+# Cleanup X11\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
 \n\
 echo '=== STARTING DISPLAY SERVICES ==='\n\
 Xvfb :1 -screen 0 \${SCREEN_RESOLUTION}x24 &\n\
 sleep 2\n\
 openbox-session &\n\
-x11vnc -display :1 -nopw -forever -shared -rfbport 5900 &\n\
-websockify --web /usr/share/novnc 6080 localhost:5900 &\n\
+# Optimized x11vnc to prevent 'Disconnected' errors\n\
+x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -noxdamage -ncache 10 &\n\
 \n\
-echo '=== STARTING WEBHOOK SERVER (Health Check) ==='\n\
-# Start the python receiver first so Railway's health check passes\n\
-python3 /root/reciever.py &\n\
+echo '=== STARTING noVNC (Public Interface) ==='\n\
+# Websockify takes the Railway PORT (8080) to show the desktop\n\
+websockify --web /usr/share/novnc \${PORT} localhost:5900 &\n\
 \n\
 echo '=== WINE INIT ==='\n\
 wine wineboot --init\n\
@@ -91,24 +87,34 @@ MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
 if [ ! -d \"\$MT5_PATH\" ]; then\n\
   echo '=== INSTALLING MT5 ==='\n\
   wine /root/mt5setup.exe /portable /auto\n\
-  sleep 60\n\
+  sleep 90\n\
 fi\n\
 \n\
-echo '=== STARTING MT5 & BRIDGE ==='\n\
+echo '=== STARTING MT5 ==='\n\
 wine \"\$MT5_PATH/terminal64.exe\" /portable &\n\
-sleep 30\n\
+sleep 40\n\
+\n\
+echo '=== STARTING MT5 LINUX BRIDGE ==='\n\
 python3 -m mt5linux.bridge &\n\
 \n\
+# Wait for Bridge port 18812 to be open\n\
+while ! timeout 1s bash -c \"echo > /dev/tcp/localhost/18812\" 2>/dev/null; do\n\
+  echo 'Waiting for bridge...'\n\
+  sleep 2\n\
+done\n\
+\n\
+echo '=== STARTING WEBHOOK SERVER (Internal Port 5000) ==='\n\
+python3 /root/reciever.py &\n\
+\n\
 echo '=== SYSTEM READY ==='\n\
-# Keep container alive and monitor background processes\n\
 wait -n\n\
 " > /start.sh && chmod +x /start.sh
 
 # -------------------------------
 # Configuration
 # -------------------------------
-EXPOSE 8080 6080 5900
+# We expose the main Railway port and the VNC port
+EXPOSE 8080 5900 5000
 
-# Use tini to handle signals and zombie processes properly
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/bin/bash", "/start.sh"]
