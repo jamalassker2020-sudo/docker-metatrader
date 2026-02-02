@@ -35,12 +35,25 @@ RUN pip3 install --no-cache-dir flask flask-cors requests pytz rpyc mt5linux
 RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
     cp /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
 
+# ... (Previous sections of your Dockerfile) ...
+
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 COPY receiver.py /root/
 
 # -------------------------------
-# 3. Final Startup Script (Using 'wine' directly)
+# NEW: Copy MT5 Files to a staging area
+# -------------------------------
+RUN mkdir -p /root/mt5_staging/Experts /root/mt5_staging/Include
+
+# Copy the EA
+COPY "MT5 to Telegram.ex5" /root/mt5_staging/Experts/
+
+# Copy the header files from your screenshot
+COPY Comment.mqh Common.mqh jason.mqh Telegram.mqh /root/mt5_staging/Include/
+
+# -------------------------------
+# 3. Updated Startup Script
 # -------------------------------
 RUN printf "#!/bin/bash\n\
 set -e\n\
@@ -54,10 +67,7 @@ x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -noxdamage -ncache 10 &\
 websockify --web /usr/share/novnc \${PORT} localhost:5900 &\n\
 \n\
 echo '=== INITIALIZING WINE ==='\n\
-# Find where wine is and use it\n\
 WINE_BIN=\$(which wine64 || which wine)\n\
-echo \"Using binary: \$WINE_BIN\"\n\
-\n\
 \$WINE_BIN wineboot --init\n\
 sleep 15\n\
 \n\
@@ -67,6 +77,13 @@ if [ ! -d \"\$MT5_PATH\" ]; then\n\
   \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
   sleep 90\n\
 fi\n\
+\n\
+# --- INSTALL STAGED FILES ---\n\
+MQL5_PATH=\"\$MT5_PATH/MQL5\"\n\
+echo '=== INSTALLING EA AND HEADERS ==='\n\
+mkdir -p \"\$MQL5_PATH/Experts\" \"\$MQL5_PATH/Include\"\n\
+cp /root/mt5_staging/Experts/* \"\$MQL5_PATH/Experts/\"\n\
+cp /root/mt5_staging/Include/* \"\$MQL5_PATH/Include/\"\n\
 \n\
 echo '=== STARTING MT5 ==='\n\
 \$WINE_BIN \"\$MT5_PATH/terminal64.exe\" /portable &\n\
@@ -80,6 +97,8 @@ done\n\
 echo '=== STARTING WEBHOOK ==='\n\
 python3 /root/receiver.py\n\
 " > /start.sh && chmod +x /start.sh
+
+# ... (Rest of Dockerfile) ...
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["/bin/bash", "/start.sh"]
