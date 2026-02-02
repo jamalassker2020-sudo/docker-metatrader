@@ -12,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 USER root
 
 # -------------------------------
-# 1. System dependencies (Robust Wine Install)
+# 1. System dependencies
 # -------------------------------
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
@@ -36,12 +36,12 @@ WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 COPY receiver.py /root/
 
-# NEW: Copy MT5 Files to a staging area
+# STAGING AREA
 RUN mkdir -p /root/mt5_staging/Experts /root/mt5_staging/Include
 
-# Copy the EA and header files from your directory
-COPY "MT5 to Telegram.ex5" /root/mt5_staging/Experts/
-COPY Comment.mqh Common.mqh jason.mqh Telegram.mqh /root/mt5_staging/Include/
+# FIX: Use wildcard to handle the space in "MT5 to Telegram.ex5" without quote errors
+COPY *.ex5 /root/mt5_staging/Experts/
+COPY *.mqh /root/mt5_staging/Include/
 
 # -------------------------------
 # 3. Final Startup Script
@@ -62,13 +62,11 @@ WINE_BIN=\$(which wine64 || which wine)\n\
 \$WINE_BIN wineboot --init\n\
 sleep 15\n\
 \n\
-# Correcting MT5 Path for typical Wine 64-bit installations\n\
 MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
 \n\
 if [ ! -f \"\$MT5_PATH/terminal64.exe\" ]; then\n\
   echo '=== INSTALLING MT5 ==='\n\
   \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
-  # Wait longer for the installer to finish background tasks\n\
   sleep 60\n\
 fi\n\
 \n\
@@ -76,17 +74,15 @@ fi\n\
 MQL5_PATH=\"\$MT5_PATH/MQL5\"\n\
 echo '=== INSTALLING EA AND HEADERS ==='\n\
 mkdir -p \"\$MQL5_PATH/Experts\" \"\$MQL5_PATH/Include\"\n\
-cp /root/mt5_staging/Experts/* \"\$MQL5_PATH/Experts/\" || true\n\
-cp /root/mt5_staging/Include/* \"\$MQL5_PATH/Include/\" || true\n\
+cp -r /root/mt5_staging/Experts/* \"\$MQL5_PATH/Experts/\" || true\n\
+cp -r /root/mt5_staging/Include/* \"\$MQL5_PATH/Include/\" || true\n\
 \n\
 echo '=== STARTING MT5 ==='\n\
-# Use full path and start from within the directory to avoid library load errors\n\
 cd \"\$MT5_PATH\"\n\
 \$WINE_BIN terminal64.exe /portable &\n\
 sleep 45\n\
 \n\
 echo '=== STARTING BRIDGE ==='\n\
-# Fixed mt5linux command: it requires the path to the python interpreter\n\
 python3 -m mt5linux python &\n\
 \n\
 until timeout 1 bash -c 'echo > /dev/tcp/localhost/18812' 2>/dev/null; do \n\
