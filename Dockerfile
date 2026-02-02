@@ -1,18 +1,21 @@
 FROM ubuntu:22.04
 
-# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:1 \
     WINEDEBUG=-all \
     WINEARCH=win64 \
     WINEPREFIX=/root/.wine \
     SCREEN_RESOLUTION=1280x720 \
-    PORT=8080
+    PORT=8080 \
+    FLASK_PORT=8081
 
 USER root
+RUN apt-get update && apt-get install -y wine
+# Add any other MT5 dependencies here
+USER mtuser
 
 # -------------------------------
-# 1. System dependencies
+# 1. System dependencies (Robust Wine Install)
 # -------------------------------
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
@@ -35,7 +38,6 @@ RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 COPY receiver.py /root/
-
 # STAGING AREA
 RUN mkdir -p /root/mt5_staging/Experts /root/mt5_staging/Include
 
@@ -44,7 +46,7 @@ COPY *.ex5 /root/mt5_staging/Experts/
 COPY *.mqh /root/mt5_staging/Include/
 
 # -------------------------------
-# 3. Final Startup Script
+# 3. Final Startup Script (Using 'wine' directly)
 # -------------------------------
 RUN printf "#!/bin/bash\n\
 set -e\n\
@@ -58,14 +60,21 @@ x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -noxdamage -ncache 10 &\
 websockify --web /usr/share/novnc \${PORT} localhost:5900 &\n\
 \n\
 echo '=== INITIALIZING WINE ==='\n\
+# Find where wine is and use it\n\
 WINE_BIN=\$(which wine64 || which wine)\n\
+echo \"Using binary: \$WINE_BIN\"\n\
+\n\
 \$WINE_BIN wineboot --init\n\
 sleep 15\n\
 \n\
 MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
-\n\
-if [ ! -f \"\$MT5_PATH/terminal64.exe\" ]; then\n\
+if [ ! -d \"\$MT5_PATH\" ]; then\n\
   echo '=== INSTALLING MT5 ==='\n\
+  \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
+  sleep 90\n\
+fi\n\
+\n\
+echo '=== INSTALLING MT5 ==='\n\
   \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
   sleep 60\n\
 fi\n\
