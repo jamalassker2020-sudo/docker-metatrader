@@ -10,9 +10,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     FLASK_PORT=8081
 
 USER root
+
+# FIX: Create the user before trying to use it
+RUN useradd -m mtuser
+
 RUN apt-get update && apt-get install -y wine
-# Add any other MT5 dependencies here
-USER mtuser
 
 # -------------------------------
 # 1. System dependencies (Robust Wine Install)
@@ -38,15 +40,16 @@ RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 COPY receiver.py /root/
+
 # STAGING AREA
 RUN mkdir -p /root/mt5_staging/Experts /root/mt5_staging/Include
 
-# FIX: Use wildcard to handle the space in "MT5 to Telegram.ex5" without quote errors
+# FIX: Wildcards to handle file spaces and multiple headers
 COPY *.ex5 /root/mt5_staging/Experts/
 COPY *.mqh /root/mt5_staging/Include/
 
 # -------------------------------
-# 3. Final Startup Script (Using 'wine' directly)
+# 3. Final Startup Script
 # -------------------------------
 RUN printf "#!/bin/bash\n\
 set -e\n\
@@ -60,7 +63,6 @@ x11vnc -display :1 -nopw -forever -shared -rfbport 5900 -noxdamage -ncache 10 &\
 websockify --web /usr/share/novnc \${PORT} localhost:5900 &\n\
 \n\
 echo '=== INITIALIZING WINE ==='\n\
-# Find where wine is and use it\n\
 WINE_BIN=\$(which wine64 || which wine)\n\
 echo \"Using binary: \$WINE_BIN\"\n\
 \n\
@@ -68,15 +70,10 @@ echo \"Using binary: \$WINE_BIN\"\n\
 sleep 15\n\
 \n\
 MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
-if [ ! -d \"\$MT5_PATH\" ]; then\n\
+if [ ! -f \"\$MT5_PATH/terminal64.exe\" ]; then\n\
   echo '=== INSTALLING MT5 ==='\n\
   \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
   sleep 90\n\
-fi\n\
-\n\
-echo '=== INSTALLING MT5 ==='\n\
-  \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
-  sleep 60\n\
 fi\n\
 \n\
 # --- INSTALL STAGED FILES ---\n\
