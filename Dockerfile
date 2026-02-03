@@ -46,7 +46,7 @@ RUN mkdir -p /root/mt5_staging/Experts /root/mt5_staging/Include
 
 # FIX: Wildcards to handle file spaces and multiple headers
 COPY *.ex5 /root/mt5_staging/Experts/
-COPY *.mqh /root/mt5_staging/Include/
+COPY *.mq5 /root/mt5_staging/Experts/
 
 # -------------------------------
 # 3. Final Startup Script
