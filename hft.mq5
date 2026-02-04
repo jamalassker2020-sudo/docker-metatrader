@@ -1,103 +1,89 @@
 //+------------------------------------------------------------------+
-//|                                     HFT_2026_QuantumShield_PRO   |
+//|                                     HFT_2026_QuantumShield_ULTRA |
 //|                                  Copyright 2026, Gemini Adaptive |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026, Gemini AI"
-#property version   "10.25"
+#property version   "10.50"
 #property strict
-#property description "HEAVY KERNEL: ASYNC MULTI-SYMBOL HFT + EXPONENTIAL SHIELD"
+#property description "ULTRA-PRO HFT: ASYNC ENGINE + EXPONENTIAL PROFIT SHIELD"
 
 #include <Trade\Trade.mqh>
 #include <Trade\SymbolInfo.mqh>
 
-//--- CORE PARAMETERS
-input double   InpStartLot      = 0.1;        // Starting Lot Size
-input double   InpRiskMult      = 0.0001;     // Exponential: Extra 0.01 lot per $100 profit
-input int      InpMaxGlobalPos  = 50;         // Max concurrent trades across 29 pairs
-input double   InpLockUSD       = 5.0;        // Hard-lock profit at $5.00
-input int      InpSpreadLimit   = 30;         // Max spread in points to allow HFT
-input int      InpDeviation     = 20;         // ECB Anchor Deviation
-input string   InpShieldKey     = "QS_V10_PERMA_DATA";
+//--- CORE INPUTS
+input double InpStartLot      = 0.1;        // Starting HFT Lot Size
+input double InpExpFactor     = 0.0001;     // Exponential: +0.01 lot per $100 shielded
+input double InpLockProfit    = 5.0;        // Hyper-aggressive $5 profit shield
+input int    InpMaxPos        = 50;         // Global concurrent trade limit
+input int    InpSpreadLimit   = 30;         // Spread safety (points)
+input int    InpDeviation     = 25;         // ECB Anchor Deviation
+input string InpShieldID      = "QS_ULTRA_TOTAL_2026";
 
 //--- SYSTEM STATE
-CTrade         m_trade;
-double         g_locked_total   = 0;
-string         g_pairs[]        = {"EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","NZDUSD","USDCHF","EURGBP","EURJPY","GBPJPY","EURAUD","EURCAD","EURNZD","EURCHF","GBPAUD","GBPCAD","GBPNZD","GBPCHF","AUDJPY","AUDCAD","AUDNZD","AUDCHF","CADJPY","CADCHF","NZDJPY","NZDCAD","NZDCHF","CHFJPY"};
+CTrade      m_trade;
+double      g_shield_total = 0;
+string      g_pairs[] = {"EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","NZDUSD","USDCHF","EURGBP","EURJPY","GBPJPY","EURAUD","EURCAD","EURNZD","EURCHF","GBPAUD","GBPCAD","GBPNZD","GBPCHF","AUDJPY","AUDCAD","AUDNZD","AUDCHF","CADJPY","CADCHF","NZDJPY","NZDCAD","NZDCHF","CHFJPY"};
 
 //+------------------------------------------------------------------+
-//| ON_INIT: Hard-Disk Data Link                                     |
+//| KERNEL INITIALIZATION: Disk Persistence                          |
 //+------------------------------------------------------------------+
 int OnInit() {
-   // RECOVER DATA FROM TERMINAL REGISTRY (Persistence Workaround)
-   if(GlobalVariableCheck(InpShieldKey)) 
-      g_locked_total = GlobalVariableGet(InpShieldKey);
+   // 1. DISK RECOVERY: Load shielded profits from Global Variable Pool
+   if(GlobalVariableCheck(InpShieldID)) 
+      g_shield_total = GlobalVariableGet(InpShieldID);
    else 
-      GlobalVariableSet(InpShieldKey, 0.0);
+      GlobalVariableSet(InpShieldID, 0.0);
 
-   // HFT OPTIMIZATION
-   m_trade.SetExpertMagicNumber(20261025);
-   m_trade.SetAsyncMode(true); // Fire and forget for speed
+   // 2. ASYNC OPTIMIZATION
+   m_trade.SetExpertMagicNumber(2026888);
+   m_trade.SetAsyncMode(true); // Millisecond execution speed
    
-   // VALETAX / ECN AUTO-FIX
+   // 3. ECN AUTO-CONFIG
    uint fill = (uint)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
    m_trade.SetTypeFilling(((fill & SYMBOL_FILLING_FOK) != 0) ? ORDER_FILLING_FOK : ORDER_FILLING_IOC);
 
-   Print("KERNEL ONLINE. PERSISTENT SHIELD: $", g_locked_total);
+   Print("KERNEL ONLINE. CURRENT SECURED SHIELD: $", g_shield_total);
    return(INIT_SUCCEEDED);
 }
 
 //+------------------------------------------------------------------+
-//| ON_TICK: The 29-Pair HFT Scanning Engine                         |
+//| HFT TICK ENGINE: 29-Symbol Real-Time Loop                        |
 //+------------------------------------------------------------------+
 void OnTick() {
-   int total_pairs = ArraySize(g_pairs);
-   
-   // CALCULATE EXPONENTIAL LOT SIZE
-   // As g_locked_total grows, the bot hits harder
-   double dynamic_lot = NormalizeDouble(InpStartLot + (g_locked_total * InpRiskMult), 2);
-   if(dynamic_lot > 15.0) dynamic_lot = 15.0; // Safety Cap
+   // A. EXPONENTIAL LOT CALCULATION (Smart Compounding)
+   double d_lot = NormalizeDouble(InpStartLot + (g_shield_total * InpExpFactor), 2);
+   if(d_lot > 15.0) d_lot = 15.0; // Hard cap for liquidity
 
-   for(int i=0; i<total_pairs; i++) {
+   // B. MULTI-SYMBOL SCANNER (29 Nodes)
+   for(int i=0; i<ArraySize(g_pairs); i++) {
       string sym = g_pairs[i];
       if(!SymbolSelect(sym, true)) continue;
-
-      // SPREAD PROTECTION (AI SECRET: Don't trade during news/widening)
-      long spread = SymbolInfoInteger(sym, SYMBOL_SPREAD);
-      if(spread > InpSpreadLimit) continue;
-
+      
+      // SPREAD DEFENSE: Prevents entry during volatility news spikes
+      if(SymbolInfoInteger(sym, SYMBOL_SPREAD) > InpSpreadLimit) continue;
+      
       double bid = SymbolInfoDouble(sym, SYMBOL_BID);
       double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
-      double point = SymbolInfoDouble(sym, SYMBOL_POINT);
-      
-      // ECB ANCHOR CALCULATION (Live Data Mean Reversion)
-      double anchor = iMA(sym, _Period, 50, 0, MODE_EMA, PRICE_CLOSE);
-      double trigger = InpDeviation * point;
+      double anchor = iMA(sym, _Period, 100, 0, MODE_EMA, PRICE_CLOSE);
+      double trigger = InpDeviation * SymbolInfoDouble(sym, SYMBOL_POINT);
 
-      // MULTI-ENTRY ACCUMULATION
-      if(PositionsTotal() < InpMaxGlobalPos) {
-         if(bid < anchor - trigger) {
-            if(m_trade.Buy(dynamic_lot, sym, ask, 0, 0, "QS_HFT_PRO"))
-               Print("ASYNC BUY SENT: ", sym, " LOT: ", dynamic_lot);
-         }
-         if(ask > anchor + trigger) {
-            if(m_trade.Sell(dynamic_lot, sym, bid, 0, 0, "QS_HFT_PRO"))
-               Print("ASYNC SELL SENT: ", sym, " LOT: ", dynamic_lot);
-         }
+      // C. MULTI-POSITION ACCUMULATION
+      if(PositionsTotal() < InpMaxPos) {
+         if(bid < anchor - trigger) m_trade.Buy(d_lot, sym, ask, 0, 0, "QS_ULTRA_HFT");
+         if(ask > anchor + trigger) m_trade.Sell(d_lot, sym, bid, 0, 0, "QS_ULTRA_HFT");
       }
    }
 
-   // 2026 PROFIT LOCKING (THE SHIELD)
+   // D. THE "PERMANENT SHIELD" WORKAROUND
    for(int j=PositionsTotal()-1; j>=0; j--) {
       ulong ticket = PositionGetTicket(j);
       if(PositionSelectByTicket(ticket)) {
          double profit = PositionGetDouble(POSITION_PROFIT);
-         
-         // HARD LOCK: Once price moves in favor, save to disk and close
-         if(profit >= InpLockUSD) {
-            g_locked_total += profit;
-            GlobalVariableSet(InpShieldKey, g_locked_total); // Permanent disk save
+         if(profit >= InpLockProfit) {
+            g_shield_total += profit;
+            GlobalVariableSet(InpShieldID, g_shield_total); // Commit to Hard Drive (F3 menu)
             m_trade.PositionClose(ticket);
-            Print("SHIELD EXPANDED: +$", profit, " TOTAL SECURED: $", g_locked_total);
+            Print("SHIELD UPDATED: +$", profit, " [TOTAL PERSISTENT: $", g_shield_total, "]");
          }
       }
    }
