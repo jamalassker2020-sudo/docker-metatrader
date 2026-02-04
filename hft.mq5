@@ -1,150 +1,126 @@
 //+------------------------------------------------------------------+
-//|                                     HFT_ForexStrategy_2026.mq5 |
-//|                                Hyper-Active HFT Execution Kernel |
+//|                                     HFT_2026_QuantumShield_ULTRA |
+//|                                  Copyright 2026, Gemini Adaptive |
 //+------------------------------------------------------------------+
-#property copyright "HFT Strategy 2026"
-#property version   "2.00"
+#property copyright "Copyright 2026"
+#property version   "15.00"
+#property strict
 
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
-#include <Trade\AccountInfo.mqh>
+#include <Trade\SymbolInfo.mqh>
 
 //--- HYPER-HFT INPUTS
-input double   InpLotSize        = 0.1;      
-input int      InpMaxPositions   = 50;       // Increased for HFT
-input int      InpTakeProfit     = 5;        // Micro-targets (5 pips)
-input int      InpStopLoss       = 100;      // Wider SL to allow breathing
-input int      InpTrailingStart  = 2;        // Immediate trail (2 pips)
-input int      InpTrailingStep   = 1;        
-input int      InpSpreadLimit    = 50;       // Max 5 pips spread
-input int      InpSensitivity    = 5;        // Points movement for trigger
-input bool     InpUseBalanceShield = true;
-input string   InpShieldID       = "QS_ULTRA_PERSIST_2026";
+input double InpLotSize        = 0.1;      // Standard HFT Lot
+input int    InpMaxPos         = 50;       // Max Concurrent Trades
+input int    InpSpreadLimit    = 40;       // Points (4.0 pips)
+input int    InpGapThreshold   = 5;        // Points movement for instant entry
+input double InpLockProfit     = 1.0;      // Hard $1.00 profit capture
+input string InpShieldID       = "QS_ULTRA_TOTAL_2026";
 
-//--- Global Variables
-CTrade          trade;
-CPositionInfo   posInfo;
-CAccountInfo    accInfo;
+//--- SYSTEM STATE
+CTrade          m_trade;
+CPositionInfo   m_position;
+double          g_shield_total = 0;
+double          g_last_bid[];
 
-string pairs[] = {
-    "EURUSD","GBPUSD","USDJPY","USDCHF","AUDUSD","USDCAD","NZDUSD",
-    "EURGBP","EURJPY","EURCHF","EURAUD","EURCAD","EURNZD",
-    "GBPJPY","GBPCHF","GBPAUD","GBPCAD","GBPNZD",
-    "AUDJPY","AUDCHF","AUDCAD","AUDNZD",
-    "CADJPY","CADCHF","CHFJPY","NZDJPY","NZDCHF","NZDCAD","USDSGD"
+string g_pairs[] = {
+    "EURUSD","GBPUSD","USDJPY","AUDUSD","USDCAD","NZDUSD","USDCHF",
+    "EURGBP","EURJPY","GBPJPY","EURAUD","EURCAD","EURNZD","EURCHF",
+    "GBPAUD","GBPCAD","GBPNZD","GBPCHF","AUDJPY","AUDCAD","AUDNZD",
+    "AUDCHF","CADJPY","CADCHF","NZDJPY","NZDCAD","NZDCHF","CHFJPY"
 };
 
-double last_prices[];
-double lockedProfit = 0;
-
+//+------------------------------------------------------------------+
+//| KERNEL INITIALIZATION                                            |
+//+------------------------------------------------------------------+
 int OnInit() {
-    trade.SetExpertMagicNumber(202601);
-    trade.SetAsyncMode(true); // FIRE AND FORGET SPEED
-    trade.SetTypeFilling(ORDER_FILLING_IOC);
+    if(GlobalVariableCheck(InpShieldID)) 
+        g_shield_total = GlobalVariableGet(InpShieldID);
+    else 
+        GlobalVariableSet(InpShieldID, 0.0);
+
+    m_trade.SetExpertMagicNumber(2026888);
+    m_trade.SetAsyncMode(true); 
     
-    ArrayResize(last_prices, ArraySize(pairs));
-    for(int i=0; i<ArraySize(pairs); i++) {
-        SymbolSelect(pairs[i], true);
-        last_prices[i] = SymbolInfoDouble(pairs[i], SYMBOL_BID);
+    // Auto-detect filling mode
+    uint fill = (uint)SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+    m_trade.SetTypeFilling(((fill & SYMBOL_FILLING_FOK) != 0) ? ORDER_FILLING_FOK : ORDER_FILLING_IOC);
+
+    ArrayResize(g_last_bid, ArraySize(g_pairs));
+    for(int i=0; i<ArraySize(g_pairs); i++) {
+        SymbolSelect(g_pairs[i], true);
+        g_last_bid[i] = SymbolInfoDouble(g_pairs[i], SYMBOL_BID);
     }
 
-    if(GlobalVariableCheck(InpShieldID)) lockedProfit = GlobalVariableGet(InpShieldID);
-    
-    Print("ULTRA-HFT ACTIVE. ASYNC ENGINE ENABLED.");
+    Print("KERNEL ONLINE. ASYNC ENGINE ENABLED.");
     return(INIT_SUCCEEDED);
 }
 
+//+------------------------------------------------------------------+
+//| HFT TICK ENGINE                                                  |
+//+------------------------------------------------------------------+
 void OnTick() {
-    for(int i = 0; i < ArraySize(pairs); i++) {
-        ProcessHFT(pairs[i], i);
-    }
-    
-    UpdateTrailingStops();
-    CheckAndLockProfit();
-}
+    // 1. SCAN AND OPEN AGGRESSIVELY
+    for(int i=0; i<ArraySize(g_pairs); i++) {
+        string sym = g_pairs[i];
+        MqlTick tick;
+        if(!SymbolInfoTick(sym, tick)) continue;
 
-void ProcessHFT(string symbol, int index) {
-    MqlTick tick;
-    if(!SymbolInfoTick(symbol, tick)) return;
-    
-    // Spread Defense
-    int current_spread = (int)((tick.ask - tick.bid) / SymbolInfoDouble(symbol, SYMBOL_POINT));
-    if(current_spread > InpSpreadLimit) return;
+        // Spread Filter
+        int spread = (int)((tick.ask - tick.bid) / SymbolInfoDouble(sym, SYMBOL_POINT));
+        if(spread > InpSpreadLimit) continue;
 
-    double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-    double pip = (StringFind(symbol, "JPY") >= 0) ? 0.01 : 0.0001;
-    
-    // ULTRA-HFT TRIGGER: Price Action Momentum (Last Tick vs Current Tick)
-    double move = (tick.bid - last_prices[index]) / point;
-    last_prices[index] = tick.bid;
+        // HFT Momentum Calculation
+        double move = (tick.bid - g_last_bid[i]) / SymbolInfoDouble(sym, SYMBOL_POINT);
+        g_last_bid[i] = tick.bid;
 
-    if(CountOpenPositions() < InpMaxPositions && !HasOpenPosition(symbol)) {
-        if(move >= InpSensitivity) { // Upward Spike
-            ExecuteHFT(symbol, ORDER_TYPE_BUY, tick.ask, pip);
-        }
-        else if(move <= -InpSensitivity) { // Downward Spike
-            ExecuteHFT(symbol, ORDER_TYPE_SELL, tick.bid, pip);
+        if(PositionsTotal() < InpMaxPos && !HasPosition(sym)) {
+            if(move >= InpGapThreshold)  m_trade.Buy(InpLotSize, sym, tick.ask, 0, 0, "HFT_GO");
+            if(move <= -InpGapThreshold) m_trade.Sell(InpLotSize, sym, tick.bid, 0, 0, "HFT_GO");
         }
     }
-}
 
-void ExecuteHFT(string symbol, ENUM_ORDER_TYPE type, double price, double pip) {
-    int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-    double sl = (type == ORDER_TYPE_BUY) ? price - (InpStopLoss * pip) : price + (InpStopLoss * pip);
-    double tp = (type == ORDER_TYPE_BUY) ? price + (InpTakeProfit * pip) : price - (InpTakeProfit * pip);
+    // 2. HYPER-SCALP EXIT LOGIC
+    for(int j=PositionsTotal()-1; j>=0; j--) {
+        if(m_position.SelectByIndex(j)) {
+            if(m_position.Magic() != 2026888) continue;
 
-    trade.PositionOpen(symbol, type, InpLotSize, price, NormalizeDouble(sl, digits), NormalizeDouble(tp, digits), "ULTRA_HFT");
-}
+            double profit = m_position.Profit();
+            datetime age = TimeCurrent() - m_position.Time();
 
-void UpdateTrailingStops() {
-    for(int i = PositionsTotal() - 1; i >= 0; i--) {
-        if(!posInfo.SelectByIndex(i) || posInfo.Magic() != 202601) continue;
-        
-        string sym = posInfo.Symbol();
-        double pip = (StringFind(sym, "JPY") >= 0) ? 0.01 : 0.0001;
-        double currentSL = posInfo.StopLoss();
-        int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
-
-        if(posInfo.PositionType() == POSITION_TYPE_BUY) {
-            if(posInfo.PriceCurrent() - posInfo.PriceOpen() > InpTrailingStart * pip) {
-                double newSL = NormalizeDouble(posInfo.PriceCurrent() - (InpTrailingStep * pip), digits);
-                if(newSL > currentSL) trade.PositionModify(posInfo.Ticket(), newSL, posInfo.TakeProfit());
+            // Exit Rules: $1 Profit, or close green trade after 10 seconds
+            if(profit >= InpLockProfit) {
+                CaptureProfit(m_position.Ticket(), profit);
             }
-        } else {
-            if(posInfo.PriceOpen() - posInfo.PriceCurrent() > InpTrailingStart * pip) {
-                double newSL = NormalizeDouble(posInfo.PriceCurrent() + (InpTrailingStep * pip), digits);
-                if(newSL < currentSL || currentSL == 0) trade.PositionModify(posInfo.Ticket(), newSL, posInfo.TakeProfit());
+            else if(age > 10 && profit > 0.20) {
+                CaptureProfit(m_position.Ticket(), profit);
+            }
+            else if(age > 30) { // Safety timeout
+                m_trade.PositionClose(m_position.Ticket());
             }
         }
     }
 }
 
-void CheckAndLockProfit() {
-    double profit = AccountInfoDouble(ACCOUNT_PROFIT);
-    if(profit >= 1.0) { // Lock every $1 of floating profit immediately
-        for(int i = PositionsTotal() - 1; i >= 0; i--) {
-            if(posInfo.SelectByIndex(i) && posInfo.Magic() == 202601) {
-                if(posInfo.Profit() > 0.10) {
-                    lockedProfit += posInfo.Profit();
-                    GlobalVariableSet(InpShieldID, lockedProfit);
-                    trade.PositionClose(posInfo.Ticket());
-                }
-            }
-        }
+//+------------------------------------------------------------------+
+//| UTILITIES                                                        |
+//+------------------------------------------------------------------+
+void CaptureProfit(ulong ticket, double amount) {
+    if(m_trade.PositionClose(ticket)) {
+        g_shield_total += amount;
+        GlobalVariableSet(InpShieldID, g_shield_total);
+        Print("SHIELD UPDATED: +$", amount, " [TOTAL: $", g_shield_total, "]");
     }
 }
 
-int CountOpenPositions() {
-    int count = 0;
-    for(int i = 0; i < PositionsTotal(); i++) {
-        if(posInfo.SelectByIndex(i) && posInfo.Magic() == 202601) count++;
-    }
-    return count;
-}
-
-bool HasOpenPosition(string symbol) {
-    for(int i = 0; i < PositionsTotal(); i++) {
-        if(posInfo.SelectByIndex(i) && posInfo.Magic() == 202601 && posInfo.Symbol() == symbol) return true;
+bool HasPosition(string sym) {
+    for(int i=0; i<PositionsTotal(); i++) {
+        if(m_position.SelectByIndex(i) && m_position.Symbol() == sym) return true;
     }
     return false;
+}
+
+void OnDeinit(const int reason) {
+    GlobalVariableSet(InpShieldID, g_shield_total);
 }
