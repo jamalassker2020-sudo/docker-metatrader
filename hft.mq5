@@ -1,29 +1,25 @@
 //+------------------------------------------------------------------+
 //|                                     HFT_ForexStrategy_2026.mq5 |
-//|                                High-Frequency Trading Strategy          |
-//|                         Multi-Pair with Trailing Stop & Profit Lock  |
+//|                                Hyper-Active HFT Execution Kernel |
 //+------------------------------------------------------------------+
 #property copyright "HFT Strategy 2026"
-#property link      ""
-#property version   "1.00"
-#property strict
+#property version   "2.00"
 
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\AccountInfo.mqh>
 
-//--- Input Parameters
-input double   InpLotSize        = 0.1;      // Lot Size
-input int      InpMaxPositions   = 10;       // Max Open Positions
-input int      InpTakeProfit     = 20;       // Take Profit (pips)
-input int      InpStopLoss       = 15;       // Stop Loss (pips)
-input int      InpTrailingStart  = 10;       // Trailing Start (pips)
-input int      InpTrailingStep   = 5;        // Trailing Step (pips)
-input double   InpProfitLockPct  = 0.5;      // Profit Lock Percentage (0.5 = 50%)
-input int      InpSignalPeriod   = 14;       // Signal Period
-input double   InpSignalThreshold= 0.6;      // Signal Threshold
-input bool     InpUseBalanceShield = true;   // Use Balance Shield
-input double   InpMaxDrawdownPct = 10.0;     // Max Drawdown % for Shield
+//--- HYPER-HFT INPUTS
+input double   InpLotSize        = 0.1;      
+input int      InpMaxPositions   = 50;       // Increased for HFT
+input int      InpTakeProfit     = 5;        // Micro-targets (5 pips)
+input int      InpStopLoss       = 100;      // Wider SL to allow breathing
+input int      InpTrailingStart  = 2;        // Immediate trail (2 pips)
+input int      InpTrailingStep   = 1;        
+input int      InpSpreadLimit    = 50;       // Max 5 pips spread
+input int      InpSensitivity    = 5;        // Points movement for trigger
+input bool     InpUseBalanceShield = true;
+input string   InpShieldID       = "QS_ULTRA_PERSIST_2026";
 
 //--- Global Variables
 CTrade          trade;
@@ -38,313 +34,117 @@ string pairs[] = {
     "CADJPY","CADCHF","CHFJPY","NZDJPY","NZDCHF","NZDCAD","USDSGD"
 };
 
-double peakBalance = 0;
+double last_prices[];
 double lockedProfit = 0;
-double initialBalance = 0;
-int totalWins = 0;
-int totalLosses = 0;
 
-//+------------------------------------------------------------------+
-//| Expert initialization function                                   |
-//+------------------------------------------------------------------+
-int OnInit()
-{
-    initialBalance = accInfo.Balance();
-    peakBalance = initialBalance;
-    lockedProfit = 0;
-    
+int OnInit() {
     trade.SetExpertMagicNumber(202601);
-    trade.SetDeviationInPoints(10);
+    trade.SetAsyncMode(true); // FIRE AND FORGET SPEED
     trade.SetTypeFilling(ORDER_FILLING_IOC);
     
-    Print("HFT Forex Strategy 2026 Initialized");
-    Print("Initial Balance: ", initialBalance);
-    Print("Monitoring ", ArraySize(pairs), " currency pairs");
+    ArrayResize(last_prices, ArraySize(pairs));
+    for(int i=0; i<ArraySize(pairs); i++) {
+        SymbolSelect(pairs[i], true);
+        last_prices[i] = SymbolInfoDouble(pairs[i], SYMBOL_BID);
+    }
+
+    if(GlobalVariableCheck(InpShieldID)) lockedProfit = GlobalVariableGet(InpShieldID);
     
+    Print("ULTRA-HFT ACTIVE. ASYNC ENGINE ENABLED.");
     return(INIT_SUCCEEDED);
 }
 
-//+------------------------------------------------------------------+
-//| Expert deinitialization function                                 |
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
-{
-    Print("Strategy stopped. Final Stats:");
-    Print("Locked Profit: $", lockedProfit);
-    Print("Win Rate: ", (totalWins + totalLosses > 0) ? 
-          (double)totalWins / (totalWins + totalLosses) * 100 : 0, "%");
-}
-
-//+------------------------------------------------------------------+
-//| Expert tick function                                             |
-//+------------------------------------------------------------------+
-void OnTick()
-{
-    // Balance Shield Check
-    if(InpUseBalanceShield && CheckDrawdownExceeded())
-    {
-       CloseAllPositions("Balance Shield Triggered");
-       return;
+void OnTick() {
+    for(int i = 0; i < ArraySize(pairs); i++) {
+        ProcessHFT(pairs[i], i);
     }
     
-    // Update Trailing Stops
     UpdateTrailingStops();
-    
-    // Check Profit Lock
     CheckAndLockProfit();
-    
-    // Generate Signals and Trade
-    if(CountOpenPositions() < InpMaxPositions)
-    {
-       for(int i = 0; i < ArraySize(pairs); i++)
-       {
-          ProcessPair(pairs[i]);
-       }
-    }
 }
 
-//+------------------------------------------------------------------+
-//| Process individual pair for signals                              |
-//+------------------------------------------------------------------+
-void ProcessPair(string symbol)
-{
-    if(!SymbolSelect(symbol, true)) return;
-    if(HasOpenPosition(symbol)) return;
+void ProcessHFT(string symbol, int index) {
+    MqlTick tick;
+    if(!SymbolInfoTick(symbol, tick)) return;
     
-    double signal = CalculateSignal(symbol);
-    
-    if(signal > InpSignalThreshold)
-    {
-       OpenTrade(symbol, ORDER_TYPE_BUY);
-    }
-    else if(signal < -InpSignalThreshold)
-    {
-       OpenTrade(symbol, ORDER_TYPE_SELL);
-    }
-}
+    // Spread Defense
+    int current_spread = (int)((tick.ask - tick.bid) / SymbolInfoDouble(symbol, SYMBOL_POINT));
+    if(current_spread > InpSpreadLimit) return;
 
-//+------------------------------------------------------------------+
-//| Calculate trading signal (-1 to 1)                               |
-//+------------------------------------------------------------------+
-double CalculateSignal(string symbol)
-{
-    double signal = 0;
-    
-    // RSI Component
-    double rsi[];
-    ArraySetAsSeries(rsi, true);
-    int rsiHandle = iRSI(symbol, PERIOD_M1, InpSignalPeriod, PRICE_CLOSE);
-    if(rsiHandle != INVALID_HANDLE)
-    {
-       if(CopyBuffer(rsiHandle, 0, 0, 3, rsi) > 0)
-       {
-          if(rsi[0] < 30) signal += 0.4;
-          else if(rsi[0] > 70) signal -= 0.4;
-       }
-       IndicatorRelease(rsiHandle);
-    }
-    
-    // Momentum Component
-    double ma_fast[], ma_slow[];
-    ArraySetAsSeries(ma_fast, true);
-    ArraySetAsSeries(ma_slow, true);
-    
-    int maFastHandle = iMA(symbol, PERIOD_M1, 5, 0, MODE_EMA, PRICE_CLOSE);
-    int maSlowHandle = iMA(symbol, PERIOD_M1, 20, 0, MODE_EMA, PRICE_CLOSE);
-    
-    if(maFastHandle != INVALID_HANDLE && maSlowHandle != INVALID_HANDLE)
-    {
-       if(CopyBuffer(maFastHandle, 0, 0, 2, ma_fast) > 0 &&
-          CopyBuffer(maSlowHandle, 0, 0, 2, ma_slow) > 0)
-       {
-          if(ma_fast[0] > ma_slow[0] && ma_fast[1] <= ma_slow[1])
-             signal += 0.5;
-          else if(ma_fast[0] < ma_slow[0] && ma_fast[1] >= ma_slow[1])
-             signal -= 0.5;
-       }
-       IndicatorRelease(maFastHandle);
-       IndicatorRelease(maSlowHandle);
-    }
-    
-    // Volume spike detection - FIXED: Must use long array for Tick Volume
-    long tick_volume[];
-    ArraySetAsSeries(tick_volume, true);
-    if(CopyTickVolume(symbol, PERIOD_M1, 0, 20, tick_volume) > 0)
-    {
-       double avgVol = 0;
-       for(int i = 1; i < 20; i++) avgVol += (double)tick_volume[i];
-       avgVol /= 19;
-       
-       if((double)tick_volume[0] > avgVol * 1.5)
-          signal *= 1.3;
-    }
-    
-    return MathMax(-1, MathMin(1, signal));
-}
-
-//+------------------------------------------------------------------+
-//| Open a trade                                                     |
-//+------------------------------------------------------------------+
-void OpenTrade(string symbol, ENUM_ORDER_TYPE orderType)
-{
-    double price = (orderType == ORDER_TYPE_BUY) ? 
-                   SymbolInfoDouble(symbol, SYMBOL_ASK) : 
-                   SymbolInfoDouble(symbol, SYMBOL_BID);
-    
     double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+    double pip = (StringFind(symbol, "JPY") >= 0) ? 0.01 : 0.0001;
+    
+    // ULTRA-HFT TRIGGER: Price Action Momentum (Last Tick vs Current Tick)
+    double move = (tick.bid - last_prices[index]) / point;
+    last_prices[index] = tick.bid;
+
+    if(CountOpenPositions() < InpMaxPositions && !HasOpenPosition(symbol)) {
+        if(move >= InpSensitivity) { // Upward Spike
+            ExecuteHFT(symbol, ORDER_TYPE_BUY, tick.ask, pip);
+        }
+        else if(move <= -InpSensitivity) { // Downward Spike
+            ExecuteHFT(symbol, ORDER_TYPE_SELL, tick.bid, pip);
+        }
+    }
+}
+
+void ExecuteHFT(string symbol, ENUM_ORDER_TYPE type, double price, double pip) {
     int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-    double pipValue = (StringFind(symbol, "JPY") >= 0) ? 0.01 : 0.0001;
-    
-    double sl, tp;
-    if(orderType == ORDER_TYPE_BUY)
-    {
-       sl = NormalizeDouble(price - InpStopLoss * pipValue, digits);
-       tp = NormalizeDouble(price + InpTakeProfit * pipValue, digits);
-    }
-    else
-    {
-       sl = NormalizeDouble(price + InpStopLoss * pipValue, digits);
-       tp = NormalizeDouble(price - InpTakeProfit * pipValue, digits);
-    }
-    
-    // FIXED: PositionOpen parameters
-    if(trade.PositionOpen(symbol, orderType, InpLotSize, price, sl, tp, "HFT2026"))
-    {
-       Print("Opened ", (orderType == ORDER_TYPE_BUY ? "BUY" : "SELL"), 
-             " on ", symbol, " at ", price);
+    double sl = (type == ORDER_TYPE_BUY) ? price - (InpStopLoss * pip) : price + (InpStopLoss * pip);
+    double tp = (type == ORDER_TYPE_BUY) ? price + (InpTakeProfit * pip) : price - (InpTakeProfit * pip);
+
+    trade.PositionOpen(symbol, type, InpLotSize, price, NormalizeDouble(sl, digits), NormalizeDouble(tp, digits), "ULTRA_HFT");
+}
+
+void UpdateTrailingStops() {
+    for(int i = PositionsTotal() - 1; i >= 0; i--) {
+        if(!posInfo.SelectByIndex(i) || posInfo.Magic() != 202601) continue;
+        
+        string sym = posInfo.Symbol();
+        double pip = (StringFind(sym, "JPY") >= 0) ? 0.01 : 0.0001;
+        double currentSL = posInfo.StopLoss();
+        int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+
+        if(posInfo.PositionType() == POSITION_TYPE_BUY) {
+            if(posInfo.PriceCurrent() - posInfo.PriceOpen() > InpTrailingStart * pip) {
+                double newSL = NormalizeDouble(posInfo.PriceCurrent() - (InpTrailingStep * pip), digits);
+                if(newSL > currentSL) trade.PositionModify(posInfo.Ticket(), newSL, posInfo.TakeProfit());
+            }
+        } else {
+            if(posInfo.PriceOpen() - posInfo.PriceCurrent() > InpTrailingStart * pip) {
+                double newSL = NormalizeDouble(posInfo.PriceCurrent() + (InpTrailingStep * pip), digits);
+                if(newSL < currentSL || currentSL == 0) trade.PositionModify(posInfo.Ticket(), newSL, posInfo.TakeProfit());
+            }
+        }
     }
 }
 
-//+------------------------------------------------------------------+
-//| Update trailing stops for all positions                          |
-//+------------------------------------------------------------------+
-void UpdateTrailingStops()
-{
-    for(int i = PositionsTotal() - 1; i >= 0; i--)
-    {
-       if(!posInfo.SelectByIndex(i)) continue;
-       if(posInfo.Magic() != 202601) continue;
-       
-       string symbol = posInfo.Symbol();
-       double pipValue = (StringFind(symbol, "JPY") >= 0) ? 0.01 : 0.0001;
-       
-       double currentPrice = posInfo.PriceCurrent();
-       double openPrice = posInfo.PriceOpen();
-       double currentSL = posInfo.StopLoss();
-       
-       if(posInfo.PositionType() == POSITION_TYPE_BUY)
-       {
-          double profitPips = (currentPrice - openPrice) / pipValue;
-          if(profitPips >= InpTrailingStart)
-          {
-             double newSL = NormalizeDouble(currentPrice - InpTrailingStep * pipValue, 
-                           (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-             if(newSL > currentSL)
-             {
-                trade.PositionModify(posInfo.Ticket(), newSL, posInfo.TakeProfit());
-             }
-          }
-       }
-       else
-       {
-          double profitPips = (openPrice - currentPrice) / pipValue;
-          if(profitPips >= InpTrailingStart)
-          {
-             double newSL = NormalizeDouble(currentPrice + InpTrailingStep * pipValue,
-                           (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-             if(newSL < currentSL || currentSL == 0)
-             {
-                trade.PositionModify(posInfo.Ticket(), newSL, posInfo.TakeProfit());
-             }
-          }
-       }
+void CheckAndLockProfit() {
+    double profit = AccountInfoDouble(ACCOUNT_PROFIT);
+    if(profit >= 1.0) { // Lock every $1 of floating profit immediately
+        for(int i = PositionsTotal() - 1; i >= 0; i--) {
+            if(posInfo.SelectByIndex(i) && posInfo.Magic() == 202601) {
+                if(posInfo.Profit() > 0.10) {
+                    lockedProfit += posInfo.Profit();
+                    GlobalVariableSet(InpShieldID, lockedProfit);
+                    trade.PositionClose(posInfo.Ticket());
+                }
+            }
+        }
     }
 }
 
-//+------------------------------------------------------------------+
-//| Check and lock profits (ratchet mechanism)                       |
-//+------------------------------------------------------------------+
-void CheckAndLockProfit()
-{
-    double currentBalance = accInfo.Balance();
-    double currentEquity = accInfo.Equity();
-    double profit = currentBalance - initialBalance;
-    
-    if(currentBalance > peakBalance)
-    {
-       peakBalance = currentBalance;
-       double newLock = profit * InpProfitLockPct;
-       if(newLock > lockedProfit)
-       {
-          lockedProfit = newLock;
-          Print("PROFIT LOCKED: $", lockedProfit);
-       }
-    }
-    
-    if(InpUseBalanceShield && lockedProfit > 0)
-    {
-       double minEquity = initialBalance + lockedProfit;
-       if(currentEquity < minEquity * 0.95)
-       {
-          CloseAllPositions("Protecting Locked Profit");
-          Print("SHIELD: Closed positions to protect $", lockedProfit, " locked profit");
-       }
-    }
-}
-
-//+------------------------------------------------------------------+
-//| Check if drawdown exceeded                                       |
-//+------------------------------------------------------------------+
-bool CheckDrawdownExceeded()
-{
-    double currentEquity = accInfo.Equity();
-    double drawdownPct = (peakBalance - currentEquity) / peakBalance * 100;
-    return drawdownPct >= InpMaxDrawdownPct;
-}
-
-//+------------------------------------------------------------------+
-//| Close all positions                                              |
-//+------------------------------------------------------------------+
-void CloseAllPositions(string reason)
-{
-    for(int i = PositionsTotal() - 1; i >= 0; i--)
-    {
-       if(!posInfo.SelectByIndex(i)) continue;
-       if(posInfo.Magic() != 202601) continue;
-       
-       if(posInfo.Profit() > 0) totalWins++;
-       else totalLosses++;
-       
-       trade.PositionClose(posInfo.Ticket());
-    }
-    Print("All positions closed: ", reason);
-}
-
-//+------------------------------------------------------------------+
-//| Count open positions                                             |
-//+------------------------------------------------------------------+
-int CountOpenPositions()
-{
+int CountOpenPositions() {
     int count = 0;
-    for(int i = 0; i < PositionsTotal(); i++)
-    {
-       if(posInfo.SelectByIndex(i) && posInfo.Magic() == 202601)
-          count++;
+    for(int i = 0; i < PositionsTotal(); i++) {
+        if(posInfo.SelectByIndex(i) && posInfo.Magic() == 202601) count++;
     }
     return count;
 }
 
-//+------------------------------------------------------------------+
-//| Check if position exists for symbol                              |
-//+------------------------------------------------------------------+
-bool HasOpenPosition(string symbol)
-{
-    for(int i = 0; i < PositionsTotal(); i++)
-    {
-       if(posInfo.SelectByIndex(i) && 
-          posInfo.Magic() == 202601 && 
-          posInfo.Symbol() == symbol)
-          return true;
+bool HasOpenPosition(string symbol) {
+    for(int i = 0; i < PositionsTotal(); i++) {
+        if(posInfo.SelectByIndex(i) && posInfo.Magic() == 202601 && posInfo.Symbol() == symbol) return true;
     }
     return false;
 }
