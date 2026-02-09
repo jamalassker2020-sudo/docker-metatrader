@@ -85,7 +85,7 @@ until timeout 1 bash -c 'echo > /dev/tcp/localhost/18812' 2>/dev/null; do \n\
 done\n\
 \n\
 echo '=== STARTING WEBHOOK ==='\n\
-python3 /root/receiver.py\n\
+python3 /root/bot.py\n\
 " > /start.sh && chmod +x /start.sh
 
 EXPOSE 8080
