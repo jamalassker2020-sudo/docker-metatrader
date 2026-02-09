@@ -37,12 +37,10 @@ WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 
 # Ensure receiver.py is in your GitHub repo!
-COPY receiver.py /root/
+COPY bot.py /root/
 
 # Staging for EA and Headers (Safely handle missing files with || true)
-RUN mkdir -p /root/mt5_staging/Experts /root/mt5_staging/Include
-COPY *.ex5 /root/mt5_staging/Experts/ 2>/dev/null || true
-COPY *.mq5 /root/mt5_staging/Experts/ 2>/dev/null || true
+
 
 # 5. Final Startup Script (Your Robust Logic)
 RUN printf "#!/bin/bash\n\
