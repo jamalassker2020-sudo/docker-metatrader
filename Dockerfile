@@ -33,7 +33,7 @@ RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
 WORKDIR /root
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 COPY bot.py /root/
-COPY .env /root/
+# COPY .env /root/
 
 # 5. Startup Script
 RUN printf "#!/bin/bash\n\
