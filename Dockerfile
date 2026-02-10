@@ -36,7 +36,7 @@ RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5se
 
 # Copy your local files into the image
 COPY bot.py /root/
-COPY *.mql5 /root/
+COPY *.mq5 /root/
 
 # 5. Final Startup Script
 RUN printf "#!/bin/bash\n\
@@ -67,7 +67,7 @@ fi\n\
 \n\
 echo '=== DEPLOYING MQL5 SCRIPTS ==='\n\
 mkdir -p \"\$EXPERTS_DIR\"\n\
-cp /root/*.mql5 \"\$EXPERTS_DIR/\"\n\
+cp /root/*.mq5 \"\$EXPERTS_DIR/\"\n\
 \n\
 echo '=== STARTING MT5 ==='\n\
 cd \"\$MT5_DIR\"\n\
