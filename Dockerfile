@@ -13,7 +13,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 USER root
 
-# 1. System dependencies (Consolidated Layer)
+# 1. System dependencies
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -24,25 +24,23 @@ RUN dpkg --add-architecture i386 && \
     python3 python3-pip python3-xdg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 2. Python & App Setup (Added openai and python-dotenv)
+# 2. Python & App Setup
 RUN pip3 install --no-cache-dir flask flask-cors requests pytz rpyc mt5linux openai python-dotenv
 
-# 3. Virtual Desktop Setup
+# 3. Virtual Desktop (VNC) Setup
 RUN git clone https://github.com/novnc/noVNC.git /usr/share/novnc && \
     cp /usr/share/novnc/vnc_lite.html /usr/share/novnc/index.html
 
 WORKDIR /root
 
-# 4. Prepare MT5 and Application Files
+# 4. Prepare MetaTrader 5
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 
-# Ensure receiver.py is in your GitHub repo!
+# Ensure your bot.py is in the root of your GitHub repo
 COPY bot.py /root/
 
-# Staging for EA and Headers (Safely handle missing files with || true)
-
-
-# 5. Final Startup Script (Your Robust Logic)
+# 5. Final Startup Script
+# Fixed the bridge command to use port 18812 and improved connection check
 RUN printf "#!/bin/bash\n\
 set -e\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
@@ -66,25 +64,22 @@ if [ ! -f \"\$MT5_PATH/terminal64.exe\" ]; then\n\
   sleep 90\n\
 fi\n\
 \n\
-MQL5_PATH=\"\$MT5_PATH/MQL5\"\n\
-echo '=== INSTALLING EA AND HEADERS ==='\n\
-mkdir -p \"\$MQL5_PATH/Experts\" \"\$MQL5_PATH/Include\"\n\
-cp -r /root/mt5_staging/Experts/* \"\$MQL5_PATH/Experts/\" 2>/dev/null || true\n\
-cp -r /root/mt5_staging/Include/* \"\$MQL5_PATH/Include/\" 2>/dev/null || true\n\
-\n\
 echo '=== STARTING MT5 ==='\n\
 cd \"\$MT5_PATH\"\n\
 \$WINE_BIN terminal64.exe /portable &\n\
 sleep 45\n\
 \n\
-echo '=== STARTING BRIDGE ==='\n\
-python3 -m mt5linux python &\n\
+echo '=== STARTING MT5LINUX BRIDGE ==='\n\
+# Fixed: Specified port 18812 instead of 'python'\n\
+python3 -m mt5linux 18812 &\n\
 \n\
-until timeout 1 bash -c 'echo > /dev/tcp/localhost/18812' 2>/dev/null; do \n\
-  echo 'Waiting for bridge...'; sleep 5; \n\
+# Improved wait loop to check TCP availability\n\
+until (echo > /dev/tcp/localhost/18812) >/dev/null 2>&1; do \n\
+  echo 'Waiting for bridge on port 18812...'; \n\
+  sleep 5; \n\
 done\n\
 \n\
-echo '=== STARTING WEBHOOK ==='\n\
+echo '=== BRIDGE ACTIVE - STARTING BOT ==='\n\
 python3 /root/bot.py\n\
 " > /start.sh && chmod +x /start.sh
 
