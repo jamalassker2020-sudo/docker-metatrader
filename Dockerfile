@@ -17,9 +17,7 @@ USER root
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-    tini \
-    wine wine64 wine32 \
-    xvfb x11vnc openbox \
+    tini wine wine64 wine32 xvfb x11vnc openbox \
     websockify wget ca-certificates git \
     python3 python3-pip python3-xdg && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -36,12 +34,11 @@ WORKDIR /root
 # 4. Prepare MetaTrader 5
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 
-# Ensure your bot.py is in the root of your GitHub repo
+# Copy your local files into the image
 COPY bot.py /root/
 COPY *.mql5 /root/
 
 # 5. Final Startup Script
-# Fixed the bridge command to use port 18812 and improved connection check
 RUN printf "#!/bin/bash\n\
 set -e\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
@@ -58,27 +55,28 @@ WINE_BIN=\$(which wine64 || which wine)\n\
 \$WINE_BIN wineboot --init\n\
 sleep 15\n\
 \n\
-MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
-if [ ! -f \"\$MT5_PATH/terminal64.exe\" ]; then\n\
+# Define Paths clearly\n\
+MT5_DIR=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
+EXPERTS_DIR=\"\$MT5_DIR/MQL5/Experts\"\n\
+\n\
+if [ ! -f \"\$MT5_DIR/terminal64.exe\" ]; then\n\
   echo '=== INSTALLING MT5 ==='\n\
   \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
   sleep 90\n\
 fi\n\
 \n\
-mkdir -p \"\$MQL5_PATH\"\n\
-cp /root/AI_Sentiment_Bot.mql5 \"\$MQL5_PATH/\"\n\
-echo '=== MQL5 SCRIPT COPIED TO EXPERTS ==='\n\
+echo '=== DEPLOYING MQL5 SCRIPTS ==='\n\
+mkdir -p \"\$EXPERTS_DIR\"\n\
+cp /root/*.mql5 \"\$EXPERTS_DIR/\"\n\
 \n\
 echo '=== STARTING MT5 ==='\n\
-cd \"\$MT5_PATH\"\n\
+cd \"\$MT5_DIR\"\n\
 \$WINE_BIN terminal64.exe /portable &\n\
 sleep 45\n\
 \n\
 echo '=== STARTING MT5LINUX BRIDGE ==='\n\
-# Fixed: Specified port 18812 instead of 'python'\n\
 python3 -m mt5linux 18812 &\n\
 \n\
-# Improved wait loop to check TCP availability\n\
 until (echo > /dev/tcp/localhost/18812) >/dev/null 2>&1; do \n\
   echo 'Waiting for bridge on port 18812...'; \n\
   sleep 5; \n\
