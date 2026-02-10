@@ -8,17 +8,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- CONFIGURATION ---
-# Fixed: Accessing the key correctly from Railway Variables
-API_KEY = os.getenv("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") 
+# Pulls from Railway Variables (Ensure you added OPENROUTER_API_KEY there)
+API_KEY = os.getenv("OPENROUTER_API_KEY") 
 MAGIC_NUMBER = 123456
+
+# Updated Symbol Map with .vx suffix for Valetex
 SYMBOL_MAP = {
-    "EUR/USD": "EURUSD",
-    "GBP/USD": "GBPUSD",
-    "USD/JPY": "USDJPY",
-    "XAU/USD": "XAUUSD"
+    # Forex
+    "EUR/USD": "EURUSD.vx", 
+    "GBP/USD": "GBPUSD.vx", 
+    "USD/JPY": "USDJPY.vx", 
+    "XAU/USD": "XAUUSD.vx",
+    # Top 20 Crypto Symbols with .vx suffix
+    "BTC/USD": "BTCUSD.vx", "ETH/USD": "ETHUSD.vx", "BNB/USD": "BNBUSD.vx", 
+    "SOL/USD": "SOLUSD.vx", "XRP/USD": "XRPUSD.vx", "ADA/USD": "ADAUSD.vx",
+    "DOGE/USD": "DOGEUSD.vx", "AVAX/USD": "AVAXUSD.vx", "DOT/USD": "DOTUSD.vx",
+    "TRX/USD": "TRXUSD.vx", "LINK/USD": "LINKUSD.vx", "MATIC/USD": "MATICUSD.vx",
+    "BCH/USD": "BCHUSD.vx", "LTC/USD": "LTCUSD.vx", "SHIB/USD": "SHIBUSD.vx",
+    "ICP/USD": "ICPUSD.vx", "NEAR/USD": "NEARUSD.vx", "UNI/USD": "UNIUSD.vx",
+    "DAI/USD": "DAIUSD.vx", "STX/USD": "STXUSD.vx"
 }
 
-# Initialize MT5 Bridge
+# Initialize MT5 Bridge (Connects to the bridge started in Docker)
 mt5 = MetaTrader5(host='localhost', port=18812)
 
 client = OpenAI(
@@ -27,25 +38,24 @@ client = OpenAI(
 )
 
 def check_mt5_health():
-    """Checks if MT5 is actually logged in and connected to broker."""
+    """Checks if MT5 is actually logged in and connected."""
     if not mt5.initialize():
         print("❌ CRITICAL: MT5 Bridge Offline")
         return False
     
     account_info = mt5.account_info()
     if account_info is None:
-        print("❌ CRITICAL: Could not get account info. Is MT5 logged in?")
+        print("❌ CRITICAL: Could not get account info. Make sure you are logged into Valetex via VNC.")
         return False
     
-    print(f"✅ MT5 Online | Broker: {account_info.company} | Balance: {account_info.balance}")
+    print(f"✅ MT5 Online | Account: {account_info.login} | Balance: {account_info.balance}")
     return True
 
 def get_sentiment(pair):
-    """Asks AI for sentiment and logs the headlines clearly."""
-    prompt = f"""You are a forex news analyst. Generate 5 realistic current news headlines about {pair} 
-    and rate each one's likely impact on {pair} price direction.
-    Return ONLY a JSON array:
-    [{"headline":"...","sentiment":"BUY"},{"headline":"...","sentiment":"SELL"},{"headline":"...","sentiment":"NEUTRAL"}]"""
+    """Asks Gemini for news sentiment."""
+    prompt = f"""You are a financial analyst. Generate 5 current news headlines for {pair}.
+    Return ONLY a JSON object with this exact structure:
+    {{ "headlines": [ {{"headline":"text","sentiment":"BUY/SELL/NEUTRAL"}}, ... ] }}"""
 
     try:
         response = client.chat.completions.create(
@@ -54,9 +64,9 @@ def get_sentiment(pair):
             response_format={ "type": "json_object" }
         )
         data = json.loads(response.choices[0].message.content)
-        headlines = data.get('headlines', data) if isinstance(data, dict) else data
+        headlines = data.get('headlines', [])
         
-        print(f"--- AI Sentiment for {pair} ---")
+        print(f"\n--- AI Sentiment for {pair} ---")
         for h in headlines:
             print(f"  [{h.get('sentiment')}] {h.get('headline')}")
         return headlines
@@ -65,13 +75,16 @@ def get_sentiment(pair):
         return []
 
 def execute_trade(symbol, direction, lot):
-    """Executes trade with detailed result logging."""
+    """Executes trade on MT5 with .vx symbols."""
     if not mt5.initialize():
         return None
 
-    mt5.symbol_select(symbol, True)
+    # Sync symbol with Market Watch
+    if not mt5.symbol_select(symbol, True):
+        print(f"❌ Error: Symbol {symbol} not found on Valetex. Check suffix.")
+        return None
+
     tick = mt5.symbol_info_tick(symbol)
-    
     if tick is None:
         print(f"❌ Error: Could not get price for {symbol}")
         return None
@@ -86,7 +99,7 @@ def execute_trade(symbol, direction, lot):
         "type": order_type,
         "price": price,
         "magic": MAGIC_NUMBER,
-        "comment": "Railway AI Bot",
+        "comment": "AI Bot .vx",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
@@ -94,26 +107,20 @@ def execute_trade(symbol, direction, lot):
     print(f"🚀 Sending {direction} order for {symbol} at {price}...")
     result = mt5.order_send(request)
     
-    if result is None:
-        print(f"❌ Trade Failed: Internal Bridge Error")
-    elif result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(f"❌ Trade Failed! Error Code: {result.retcode} | Msg: {result.comment}")
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        print(f"❌ Trade Failed! Code: {result.retcode} | Msg: {result.comment}")
     else:
         print(f"✅ Trade Success! Ticket: {result.order}")
     
     return result
 
 def main_cycle(pair, lot):
-    """Full cycle with logic verification."""
+    """Execution Logic."""
     if not check_mt5_health():
         return
     
-    print(f"\n🔍 Starting analysis for {pair}...")
     headlines = get_sentiment(pair)
-    
-    if not headlines:
-        print("⚠️ No headlines received. Skipping cycle.")
-        return
+    if not headlines: return
 
     bulls = sum(1 for h in headlines if h.get('sentiment') == 'BUY')
     bears = sum(1 for h in headlines if h.get('sentiment') == 'SELL')
@@ -121,26 +128,32 @@ def main_cycle(pair, lot):
     print(f"📊 Stats: {bulls} Bulls vs {bears} Bears")
 
     direction = None
-    if bulls >= 3: direction = "BUY"  # Requiring at least 3 out of 5 for confidence
+    if bulls >= 3: direction = "BUY"
     elif bears >= 3: direction = "SELL"
     
     if direction:
-        mt5_symbol = SYMBOL_MAP.get(pair, pair.replace("/", ""))
-        execute_trade(mt5_symbol, direction, lot)
+        broker_symbol = SYMBOL_MAP.get(pair)
+        execute_trade(broker_symbol, direction, lot)
     else:
-        print("⚖️ Sentiment is Neutral/Mixed. No trade placed.")
+        print("⚖️ Mixed sentiment. No trade.")
 
 if __name__ == "__main__":
-    print("🤖 AI Trading Bot Initializing...")
-    # Wait for MT5 and Bridge to settle
-    time.sleep(10)
+    print("🤖 AI Bot Starting...")
+    # Wait for Docker bridge to be fully ready
+    time.sleep(20)
+    
+    # List of pairs to monitor (using the keys from SYMBOL_MAP)
+    watch_list = ["EUR/USD", "BTC/USD", "ETH/USD", "XAU/USD", "SOL/USD"]
     
     while True:
         try:
-            main_cycle("EUR/USD", 0.01)
-            # Sleep for 1 hour between checks to avoid spamming
-            print("\n😴 Cycle finished. Sleeping for 60 minutes...")
+            for pair in watch_list:
+                main_cycle(pair, 0.01)
+                time.sleep(10)
+            
+            print("\n😴 Cycle Complete. Sleeping 1 hour...")
             time.sleep(3600)
         except Exception as e:
-            print(f"⚠️ Unexpected Loop Error: {e}")
+            print(f"⚠️ Loop Error: {e}")
             time.sleep(60)
+
