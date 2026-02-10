@@ -36,11 +36,12 @@ WORKDIR /root
 # 4. Prepare MetaTrader 5
 RUN wget -q https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe
 
-# Ensure your bot.py is in the root of your GitHub repo
+# --- ADDED: Copy your files ---
 COPY bot.py /root/
+# This copies your local .mql5 file to a temporary location in the container
+COPY *.mql5 /root/ 
 
 # 5. Final Startup Script
-# Fixed the bridge command to use port 18812 and improved connection check
 RUN printf "#!/bin/bash\n\
 set -e\n\
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n\
@@ -58,11 +59,18 @@ WINE_BIN=\$(which wine64 || which wine)\n\
 sleep 15\n\
 \n\
 MT5_PATH=\"/root/.wine/drive_c/Program Files/MetaTrader 5\"\n\
+MQL5_PATH=\"\$MT5_PATH/MQL5/Experts\"\n\
+\n\
 if [ ! -f \"\$MT5_PATH/terminal64.exe\" ]; then\n\
   echo '=== INSTALLING MT5 ==='\n\
   \$WINE_BIN /root/mt5setup.exe /portable /auto\n\
   sleep 90\n\
 fi\n\
+\n\
+# --- ADDED: Move MQL5 file to the correct Experts folder ---\n\
+mkdir -p \"\$MQL5_PATH\"\n\
+cp /root/*.mql5 \"\$MQL5_PATH/\"\n\
+echo '=== MQL5 SCRIPT COPIED TO EXPERTS ==='\n\
 \n\
 echo '=== STARTING MT5 ==='\n\
 cd \"\$MT5_PATH\"\n\
@@ -70,10 +78,8 @@ cd \"\$MT5_PATH\"\n\
 sleep 45\n\
 \n\
 echo '=== STARTING MT5LINUX BRIDGE ==='\n\
-# Fixed: Specified port 18812 instead of 'python'\n\
 python3 -m mt5linux 18812 &\n\
 \n\
-# Improved wait loop to check TCP availability\n\
 until (echo > /dev/tcp/localhost/18812) >/dev/null 2>&1; do \n\
   echo 'Waiting for bridge on port 18812...'; \n\
   sleep 5; \n\
